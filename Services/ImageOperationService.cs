@@ -507,16 +507,23 @@ public class ImageOperationService : IImageOperationService
 
         using (Image<Rgba32> image = Image.Load<Rgba32>(fs, out IImageFormat format))
         {
-            foreach (int idx in Enumerable.Range(0, image.Height))
-            {
-                Span<Rgba32> row = image.GetPixelRowSpan(idx);
-
-                for (int rdx = 0; rdx < row.Length; ++rdx)
+            if (args.OldColor == Color.Transparent) {
+                image.Mutate(ctx =>
                 {
-                    Color color = new(row[rdx]);
+                    ctx.BackgroundColor(args.NewColor);
+                });
+            } else {
+                foreach (int idx in Enumerable.Range(0, image.Height))
+                {
+                    Span<Rgba32> row = image.GetPixelRowSpan(idx);
 
-                    if (color == args.OldColor || (args.Difference > 0 && ColorDifference(color, args.OldColor) <= args.Difference)) {
-                        row[rdx] = args.NewColor;
+                    for (int rdx = 0; rdx < image.Width; ++rdx)
+                    {
+                        Color color = new(row[rdx]);
+
+                        if (color == args.OldColor || (args.Difference > 0 && ColorDifference(row[rdx], args.OldColor) <= args.Difference)) {
+                            row[rdx] = args.NewColor;
+                        }
                     }
                 }
             }
