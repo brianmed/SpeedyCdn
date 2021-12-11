@@ -28,6 +28,10 @@ $ cp *.png ~/.config/SpeedyCdn/OriginSource/Images
 $ dotnet run -- --edgeOriginApiKey '4392339b-2c5d-48a8-a472-4ca6e23dcd38'
 ```
 
+# Requirements
+
+Need the MyGet NuGet source defined: <add key="SixLabors" value="https://www.myget.org/F/sixlabors/api/v3/index.json" />
+
 # Image Operations
 
 The Edge servers support image operations on /v1/images.  Below are some example operations.
