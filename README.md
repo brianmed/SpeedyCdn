@@ -28,7 +28,23 @@ $ cp *.png ~/.config/SpeedyCdn/OriginSource/Images
 $ dotnet run -- --edgeOriginApiKey '4392339b-2c5d-48a8-a472-4ca6e23dcd38'
 ```
 
-## Process Images
+# Image Operations
+
+The Edge servers support image operations on /v1/images.  Below are some example operations.
+
+?border.Color=Green&border.Thickness=15
+
+?crop.WH=300x300&crop.XY=0,0
+
+?flip.Mode=Horizontal
+
+?label.Text=Tux&label.FontName=Arial&label.FontSize=64&label.TextColor=Yellow&label.OutlineColor=Purple
+
+?resize.WH=500x
+
+?rotate.Mode=Rotate180
+
+## Example Image
 
 Using http://127.0.0.1/v1/images/tux.png?label.Text=Tux&label.FontName=Arial&label.FontSize=64&label.OutlineColor=Purple&label.TextColor=Yellow
 
