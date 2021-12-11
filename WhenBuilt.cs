@@ -4,6 +4,6 @@ namespace SpeedyCdn.Server
 {
     public static class WhenBuilt
     {
-        public static DateTime ItWas = DateTime.Parse("2021-12-11T09:21:39");
+        public static DateTime ItWas = DateTime.Parse("2021-12-11T09:34:19");
     }
 }
