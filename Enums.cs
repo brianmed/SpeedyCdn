@@ -1,9 +1,6 @@
 namespace SpeedyCdn.Enums
 {
-    public enum AuthorizationRoles
-    {
-        Admin
-    }
+    // 
 
     public enum CacheElementType
     {
