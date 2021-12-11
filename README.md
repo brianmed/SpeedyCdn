@@ -31,3 +31,5 @@ $ dotnet run -- --edgeOriginApiKey '4392339b-2c5d-48a8-a472-4ca6e23dcd38'
 ## Process Images
 
 Using http://127.0.0.1/v1/images/tux.png?label.Text=Tux&label.FontName=Arial&label.FontSize=64&label.OutlineColor=Purple&label.TextColor=Yellow
+
+![Tux with Text](http://bmedley.org/tuxWithText.png)
