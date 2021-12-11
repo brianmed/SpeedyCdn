@@ -64,8 +64,10 @@ partial class WebApp
 
         builder.Services.AddHttpClient();
 
+        builder.Services.AddHttpContextAccessor();
+
         builder.Services.AddTransient<IDbUpEdgeService, DbUpEdgeService>();
-        builder.Services.AddTransient<IHmacService, HmacService>();
+        builder.Services.AddScoped<IHmacService, HmacService>();
         builder.Services.AddScoped<ICachePathService, CachePathService>();
         builder.Services.AddScoped<IDownloadService, DownloadService>();
         builder.Services.AddScoped<IImageOperationService, ImageOperationService>();
@@ -123,50 +125,12 @@ partial class WebApp
         {
             using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", "Edge::v1/images");
 
-            string queryStringUnmodified = httpRequest.QueryString.ToString();
-
-            QueryStringEnumerable.Enumerator queryEnumerator = new QueryStringEnumerable(queryStringUnmodified).GetEnumerator();
-            List<KeyValuePair<string, string>> allExceptSignature = new();
-
-            string signature = null;
-
-            while (queryEnumerator.MoveNext())
-            {
-                string name = queryEnumerator.Current
-                        .DecodeName()
-                        .ToString()
-                        .ToLower();
-
-                if (name == "signature") {
-                    signature = queryEnumerator.Current.DecodeValue().ToString();
-                } else {
-                    allExceptSignature.Add(
-                        new KeyValuePair<string, string>(
-                            queryEnumerator.Current.DecodeName().ToString(),
-                            queryEnumerator.Current.DecodeValue().ToString()));
-                }
-            }
-
-            string queryString = QueryString.Create(allExceptSignature).ToString();
-
-            bool haveQueryStringSignatureKey = String.IsNullOrWhiteSpace(signature)
-                is false;
-            bool haveCliSignatureKey = String.IsNullOrWhiteSpace(ConfigCtx.Options.EdgeOriginSignatureKey)
-                is false;
-
-            if (haveCliSignatureKey) {
-                Log.Debug($"Signature IsValid: {imagePath}{queryString}");
-
-                if (hmacService.IsValid(ConfigCtx.Options.EdgeOriginSignatureKey, $"{imagePath}{queryString}", signature) is false) {
-                    Log.Debug($"Signature Mismatch");
-
-                    return Results.StatusCode(404);
-                }
-            } else if (haveQueryStringSignatureKey) {
-                Log.Debug($"Signature Given in Query and No Signature Configured");
-
+            if (hmacService.IsValid(imagePath, httpRequest.QueryString) is false) {
                 return Results.StatusCode(404);
             }
+
+            string queryString = WebApp.QueryStringExcept(httpRequest.QueryString, "signature")
+                .ToString();
 
             string fileName = Path.GetFileName(imagePath);
             string contentType = "application/octect-stream";
@@ -238,13 +202,17 @@ partial class WebApp
         app.MapGet("/v1/static/{*staticPath}", async (
             [FromServices]ICachePathService cachePathService,
             [FromServices]IDownloadService download,
+            [FromServices]IHmacService hmacService,
             [FromServices]WebEdgeDbContext webEdgeDb,
+            HttpRequest httpRequest,
             IHttpClientFactory httpClientFactory,
             string staticPath) => 
         {
             using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", "Edge::v1/static");
 
-            string url = $"{ConfigCtx.Options.EdgeOriginUrl}/v1/static/{staticPath}";
+            if (hmacService.IsValid(staticPath, QueryStringOnly(httpRequest.QueryString, "signature")) is false) {
+                return Results.StatusCode(404);
+            }
 
             string fileName = Path.GetFileName(staticPath);
             string contentType = "application/octect-stream";
