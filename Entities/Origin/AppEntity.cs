@@ -16,6 +16,8 @@ namespace SpeedyCdn.Server.Entities.Origin
         [Required]
         public string ApiKey { get; set; }
 
+        public string? SignatureKey { get; set; }
+
         [DefaultValue(typeof(DateTime), "")]        
         public DateTime Updated { get; set; }
 
@@ -23,4 +25,3 @@ namespace SpeedyCdn.Server.Entities.Origin
         public DateTime Inserted { get; set; } = DateTime.UtcNow;
     }
 }
-

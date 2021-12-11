@@ -65,6 +65,7 @@ partial class WebApp
         builder.Services.AddHttpClient();
 
         builder.Services.AddTransient<IDbUpEdgeService, DbUpEdgeService>();
+        builder.Services.AddTransient<IHmacService, HmacService>();
         builder.Services.AddScoped<ICachePathService, CachePathService>();
         builder.Services.AddScoped<IDownloadService, DownloadService>();
         builder.Services.AddScoped<IImageOperationService, ImageOperationService>();
@@ -115,11 +116,57 @@ partial class WebApp
             [FromServices]ICachePathService cachePathService,
             [FromServices]IDownloadService download,
             [FromServices]IImageOperationService imageOperation,
+            [FromServices]IHmacService hmacService,
             HttpRequest httpRequest,
             IHttpClientFactory httpClientFactory,
             string imagePath) => 
         {
             using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", "Edge::v1/images");
+
+            string queryStringUnmodified = httpRequest.QueryString.ToString();
+
+            QueryStringEnumerable.Enumerator queryEnumerator = new QueryStringEnumerable(queryStringUnmodified).GetEnumerator();
+            List<KeyValuePair<string, string>> allExceptSignature = new();
+
+            string signature = null;
+
+            while (queryEnumerator.MoveNext())
+            {
+                string name = queryEnumerator.Current
+                        .DecodeName()
+                        .ToString()
+                        .ToLower();
+
+                if (name == "signature") {
+                    signature = queryEnumerator.Current.DecodeValue().ToString();
+                } else {
+                    allExceptSignature.Add(
+                        new KeyValuePair<string, string>(
+                            queryEnumerator.Current.DecodeName().ToString(),
+                            queryEnumerator.Current.DecodeValue().ToString()));
+                }
+            }
+
+            string queryString = QueryString.Create(allExceptSignature).ToString();
+
+            bool haveQueryStringSignatureKey = String.IsNullOrWhiteSpace(signature)
+                is false;
+            bool haveCliSignatureKey = String.IsNullOrWhiteSpace(ConfigCtx.Options.EdgeOriginSignatureKey)
+                is false;
+
+            if (haveCliSignatureKey) {
+                Log.Debug($"Signature IsValid: {imagePath}{queryString}");
+
+                if (hmacService.IsValid(ConfigCtx.Options.EdgeOriginSignatureKey, $"{imagePath}{queryString}", signature) is false) {
+                    Log.Debug($"Signature Mismatch");
+
+                    return Results.StatusCode(404);
+                }
+            } else if (haveQueryStringSignatureKey) {
+                Log.Debug($"Signature Given in Query and No Signature Configured");
+
+                return Results.StatusCode(404);
+            }
 
             string fileName = Path.GetFileName(imagePath);
             string contentType = "application/octect-stream";
@@ -130,8 +177,6 @@ partial class WebApp
             {
                 Log.Warning($"No content type found for {fileName}");
             }
-
-            string queryString = httpRequest.QueryString.ToString();
 
             string cacheImagePathJson = JsonSerializer.Serialize(new[] { imagePath });
             string cacheImagePath = cachePathService.RelativeWithBucket(cacheImagePathJson, fileName);

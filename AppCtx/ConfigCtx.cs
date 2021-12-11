@@ -80,8 +80,8 @@ public class Options
     [Option("originEnableSensitiveLogging", Required = false, HelpText = "Origin Log Sensitive Information to Sql Log")]
     public bool OriginEnableSensitiveLogging { get; internal set; }
 
-    [Option("originShowApiKey", Required = false, HelpText = "Origin Show Api Key")]
-    public bool OriginShowApiKey { get; internal set; }
+    [Option("originShowKeys", Required = false, HelpText = "Origin Show Api Key and Signature Key")]
+    public bool OriginShowKeys { get; internal set; }
 
     [Option("edgeUrls", Required = false, HelpText = "Edge Urls Specifying the Addresses to Listen on (eg http://*:80)")]
     public string EdgeUrls { get; internal set; }
@@ -159,6 +159,9 @@ public class Options
 
     [Option("edgeOriginApiKey", Required = false, HelpText = "Origin Api Key Utilized by the Edge")]
     public string EdgeOriginApiKey { get; internal set; }
+
+    [Option("edgeOriginSignatureKey", Required = false, HelpText = "Origin Signature Key Utilized by the Edge")]
+    public string EdgeOriginSignatureKey { get; internal set; }
 
     // 
 
@@ -272,7 +275,7 @@ public static class ConfigCtx
                 .WithNotParsed(errors => DisplayHelp(result, errors));
 
             if (String.IsNullOrWhiteSpace(ConfigCtx.Options.EdgeUrls) is false) {
-                if (ConfigCtx.Options.OriginShowApiKey is false) {
+                if (ConfigCtx.Options.OriginShowKeys is false) {
                     ConfigCtx.HasEdgeServer = true;
                 }
             }

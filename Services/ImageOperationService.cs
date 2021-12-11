@@ -61,7 +61,7 @@ public class ImageOperationService : IImageOperationService
             FileStream imageCacheFS = new FileStream(Path.Combine(ConfigCtx.Options.EdgeCacheImagesDirectory, imageOpCachePath), FileMode.OpenOrCreate);
             
             List<QueryStringEnumerable.EncodedNameValuePair> queries = new();
-            var queryEnumerator = new QueryStringEnumerable(queryString).GetEnumerator();
+            QueryStringEnumerable.Enumerator queryEnumerator = new QueryStringEnumerable(queryString).GetEnumerator();
 
             while (queryEnumerator.MoveNext())
             {

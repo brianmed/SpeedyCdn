@@ -67,6 +67,7 @@ partial class WebApp
 
         // DbUp 
         builder.Services.AddTransient<IDbUpOriginService, DbUpOriginService>();
+        builder.Services.AddTransient<IHmacService, HmacService>();
 
         WebApplication app = builder.Build();
 
@@ -93,8 +94,10 @@ partial class WebApp
 
             // 
 
+            AppEntity appEntity = null;
+
             if (await webOriginDb.App.AnyAsync() is false) {
-                AppEntity appEntity = new()
+                appEntity = new()
                 {
                     JwtSecret = Guid.NewGuid().ToString(),
                     ApiKey = Guid.NewGuid().ToString()
@@ -105,8 +108,18 @@ partial class WebApp
                 await webOriginDb.SaveChangesAsync();
             }
 
-            if (ConfigCtx.Options.OriginShowApiKey) {
-                Log.Information($"Origin ApiKey: {(await webOriginDb.App.SingleAsync()).ApiKey}");
+            appEntity = await webOriginDb.App
+                .SingleAsync();
+
+            if (String.IsNullOrWhiteSpace(appEntity.SignatureKey)) {
+                appEntity.SignatureKey = Guid.NewGuid().ToString();
+
+                await webOriginDb.SaveChangesAsync();
+            }
+
+            if (ConfigCtx.Options.OriginShowKeys) {
+                Log.Information($"Origin ApiKey: {appEntity.ApiKey}");
+                Log.Information($"Origin SignatureKey: {appEntity.SignatureKey}");
 
                 Environment.Exit(0);
             }
@@ -169,6 +182,27 @@ partial class WebApp
             }
 
             return Results.File(Path.Combine(ConfigCtx.Options.OriginSourceStaticDirectory) + Path.DirectorySeparatorChar + Path.Combine(filePath.Split('/')), contentType);
+        });
+
+        app.MapGet("/v1/signature/create/{*filePath}",
+            [ApiKeyAuthorization]
+            async (
+                [FromServices]WebOriginDbContext webOriginDb,
+                [FromServices]IHmacService hmacService,
+                HttpRequest httpRequest,
+                string filePath) => 
+        {
+            using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", "Origin::v1/signature/create");
+
+            string queryString = httpRequest.QueryString.ToString();
+
+            string key = (await webOriginDb.App
+                .SingleAsync())
+                .SignatureKey;
+
+            Log.Debug($"HmacService Hash: {filePath}{queryString}");
+
+            return new { Signature = hmacService.Hash(key, $"{filePath}{queryString}") };
         });
 
         // Start the Server 
