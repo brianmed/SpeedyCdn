@@ -91,4 +91,11 @@ Using http://127.0.0.1/v1/images/tux.png?replaceColor.OldColor=Transparent&repla
 
 ![Tux with Text](http://bmedley.org/tuxWithText.png)
 
+# Notes
+
+Two directory trees are created by default:
+
+  - $HOME/.net
+  - $HOME/.config/SpeedyCdn
+
 Also, a commercial version will be available at some point.
