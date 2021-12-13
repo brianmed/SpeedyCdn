@@ -11,6 +11,7 @@ public class DirectoriesCtx
         directories.Add(ConfigCtx.Options.LogDirectory);
         if (ConfigCtx.HasEdgeServer) {
             directories.Add(ConfigCtx.Options.EdgeCacheDirectory);
+            directories.Add(ConfigCtx.Options.EdgeCacheBarcodesDirectory);
             directories.Add(ConfigCtx.Options.EdgeCacheImagesDirectory);
             directories.Add(ConfigCtx.Options.EdgeCacheStaticDirectory);
             directories.Add(ConfigCtx.Options.EdgeAppDbDirectory);

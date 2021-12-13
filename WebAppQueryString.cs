@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.WebUtilities;
 
+#if false
 namespace SpeedyCdn.Server
 {
     partial class WebApp
@@ -82,3 +83,4 @@ namespace SpeedyCdn.Server
         }
     }
 }
+#endif

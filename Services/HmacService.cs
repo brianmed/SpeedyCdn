@@ -12,6 +12,13 @@ public interface IHmacService
 
 public class HmacService : IHmacService
 {
+    public IQueryStringService QueryStringService { get; init; }
+
+    public HmacService(IQueryStringService queryStringService)
+    {
+        QueryStringService = queryStringService;
+    }
+
     public string Hash(string key, string text)
     {
         UTF8Encoding encoding = new UTF8Encoding();
@@ -35,9 +42,9 @@ public class HmacService : IHmacService
     {
         using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"{nameof(HmacService)}.{nameof(IsValid)}");
 
-        string signature = WebApp.QueryStringGetValue(queryString, "signature");
+        string signature = QueryStringService.GetValue(queryString, "signature");
 
-        QueryString withoutSignature = WebApp.QueryStringExcept(queryString, "signature");
+        QueryString withoutSignature = QueryStringService.CreateExcept(queryString, "signature");
 
         bool haveQueryStringSignatureKey = String.IsNullOrWhiteSpace(signature)
             is false;

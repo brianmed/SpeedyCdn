@@ -108,6 +108,25 @@ public class Options
         }
     }
 
+    private string _edgeCacheBarcodesDirecotry;
+    [Option("edgeCacheBarcodesDirectory", Required = false, HelpText = "Directory for Cached Barcodes (can be relative)")]
+    public string EdgeCacheBarcodesDirectory
+    {
+        get
+        {
+            if (_edgeCacheBarcodesDirecotry is null) {
+                return Path.Combine(EdgeCacheDirectory, "Barcodes");
+            } else {
+                return _edgeCacheBarcodesDirecotry;
+            }
+        }
+
+        private set
+        {
+            _edgeCacheImagesDirecotry = value;
+        }
+    }
+
     private string _edgeCacheImagesDirecotry;
     [Option("edgeCacheImagesDirectory", Required = false, HelpText = "Directory for Cached Images (can be relative)")]
     public string EdgeCacheImagesDirectory
@@ -246,9 +265,9 @@ public class Options
 
         EdgeCacheInBytes = 1_073_741_824L * 5L;
 
-        EdgeUrls = "http://*:80";
-        EdgeOriginUrl = "http://localhost:8080";
-        OriginUrls = "http://*:8080";
+        EdgeUrls = "http://*:8080";
+        EdgeOriginUrl = "http://localhost:8000";
+        OriginUrls = "http://*:8000";
     }
 }
 

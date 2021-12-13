@@ -26,6 +26,8 @@
     <PackageReference Include="SixLabors.Fonts" Version="1.0.0-beta15.23" />
     <PackageReference Include="SixLabors.ImageSharp" Version="2.0.0-alpha.0.125" />
     <PackageReference Include="SixLabors.ImageSharp.Drawing" Version="1.0.0-beta13.16" />
+    <PackageReference Include="ZXing.Net" Version="0.16.6" />
+    <PackageReference Include="ZXing.Net.Bindings.ImageSharp" Version="0.16.11" />
   </ItemGroup>
 
   <ItemGroup>
@@ -33,6 +35,7 @@
     <EmbeddedResource Include="Sql/SpeedyCdnEdgeDb00001.Sql" />
     <EmbeddedResource Include="Sql/SpeedyCdnEdgeDb00002.Sql" />
     <EmbeddedResource Include="Sql/SpeedyCdnEdgeDb00003.Sql" />
+    <EmbeddedResource Include="Sql/SpeedyCdnEdgeDb00004.Sql" />
     <EmbeddedResource Include="Sql/SpeedyCdnOriginDb00000.Sql" />
     <EmbeddedResource Include="Sql/SpeedyCdnOriginDb00001.Sql" />
   </ItemGroup>

@@ -10,6 +10,8 @@ namespace SpeedyCdn.Server.DbContexts;
 
 public class WebEdgeDbContext : DbContext
 {
+    public DbSet<BarcodeCacheElementEntity> BarcodeCacheElements { get; set; }
+
     public DbSet<ImageCacheElementEntity> ImageCacheElements { get; set; }
 
     public DbSet<StaticCacheElementEntity> StaticCacheElements { get; set; }

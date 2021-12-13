@@ -2,9 +2,11 @@ namespace SpeedyCdn.Server;
 
 using System.Net;
 using System.Reflection;
+using System.Security.Claims;
 using System.Text;
 
 // 
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpLogging;
@@ -16,6 +18,7 @@ using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Options;
 // 
 
 using SpeedyCdn.Enums;
@@ -65,9 +68,32 @@ partial class WebApp
         builder.Services.AddDataProtection()
             .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(ConfigCtx.Options.AppDirectory, "DataProtection")));
 
-        // DbUp 
+        // 
+
+        // 
+        builder.Services.AddHttpContextAccessor();
+
+        builder.Services.AddAuthentication(options => options.DefaultScheme = "ApiKey")
+            .AddScheme<ApiKeyAuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(
+                "ApiKey",
+                options => { });
+
+        builder.Services.AddAuthorization(options =>
+        {
+            options.AddPolicy("ApiKey", policy =>
+                policy.Requirements.Add(new ApiKeyAuthorizationRequirement()));
+    
+            options.FallbackPolicy = new AuthorizationPolicyBuilder()
+                .RequireAuthenticatedUser()
+                .Build();
+        });
+        // 
+
+        builder.Services.AddScoped<IAuthorizationHandler, ApiKeyAuthorizationHandler>();
         builder.Services.AddTransient<IDbUpOriginService, DbUpOriginService>();
         builder.Services.AddTransient<IHmacService, HmacService>();
+        builder.Services.AddTransient<IQueryStringService, QueryStringService>();
+        builder.Services.AddTransient<IDbUpOriginService, DbUpOriginService>();
 
         WebApplication app = builder.Build();
 
@@ -150,8 +176,13 @@ partial class WebApp
 
         // 
 
+        // 
+        app.UseAuthentication();
+        app.UseAuthorization();
+        // 
+
         app.MapGet("/v1/images/{*imagePath}",
-            [ApiKeyAuthorization]
+            [Authorize(Policy = "ApiKey")]
             async (string imagePath) => 
         {
             string fileName = Path.GetFileName(imagePath);
@@ -168,7 +199,7 @@ partial class WebApp
         });
 
         app.MapGet("/v1/static/{*filePath}",
-            [ApiKeyAuthorization]
+            [Authorize(Policy = "ApiKey")]
             async (string filePath) => 
         {
             string fileName = Path.GetFileName(filePath);
@@ -184,15 +215,37 @@ partial class WebApp
             return Results.File(Path.Combine(ConfigCtx.Options.OriginSourceStaticDirectory) + Path.DirectorySeparatorChar + Path.Combine(filePath.Split('/')), contentType);
         });
 
-        app.MapGet("/v1/signature/create/{*filePath}",
-            [ApiKeyAuthorization]
+        app.MapGet("/v1/signature/{signatureType}",
+            [Authorize(Policy = "ApiKey")]
             async (
                 [FromServices]WebOriginDbContext webOriginDb,
                 [FromServices]IHmacService hmacService,
                 HttpRequest httpRequest,
+                string signatureType) => 
+        {
+            using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"Origin::v1/signature/{signatureType}");
+
+            string queryString = httpRequest.QueryString.ToString();
+
+            string key = (await webOriginDb.App
+                .SingleAsync())
+                .SignatureKey;
+
+            Log.Debug($"HmacService Hash: {queryString}");
+
+            return new { Signature = hmacService.Hash(key, $"{signatureType}{queryString}") };
+        });
+
+        app.MapGet("/v1/signature/{signatureType}/{*filePath}",
+            [Authorize(Policy = "ApiKey")]
+            async (
+                [FromServices]WebOriginDbContext webOriginDb,
+                [FromServices]IHmacService hmacService,
+                HttpRequest httpRequest,
+                string signatureType,
                 string filePath) => 
         {
-            using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", "Origin::v1/signature/create");
+            using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"Origin::v1/signature/{signatureType}/*");
 
             string queryString = httpRequest.QueryString.ToString();
 
@@ -202,7 +255,7 @@ partial class WebApp
 
             Log.Debug($"HmacService Hash: {filePath}{queryString}");
 
-            return new { Signature = hmacService.Hash(key, $"{filePath}{queryString}") };
+            return new { Signature = hmacService.Hash(key, $"{signatureType}/{filePath}{queryString}") };
         });
 
         // Start the Server 
@@ -212,37 +265,82 @@ partial class WebApp
     // 
 }
 
-[AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]
-public class ApiKeyAuthorization : Attribute, IAsyncAuthorizationFilter
-{ 
+public class ApiKeyAuthenticationSchemeOptions : AuthenticationSchemeOptions
+{
+}
+
+public class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAuthenticationSchemeOptions>
+{
     WebOriginDbContext WebOriginDb { get; init; }
 
-    public ApiKeyAuthorization()
+    IHttpContextAccessor HttpContextAccessor { get; init; }
+
+    public ApiKeyAuthenticationHandler(
+        IOptionsMonitor<ApiKeyAuthenticationSchemeOptions> options,
+        ILoggerFactory logger,
+        System.Text.Encodings.Web.UrlEncoder encoder,
+        IHttpContextAccessor httpContextAccessor,
+        ISystemClock clock) : base(options, logger, encoder, clock)
     {
+       HttpContextAccessor = httpContextAccessor;
     }
 
-    public ApiKeyAuthorization(WebOriginDbContext webOriginDb)
+    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        WebOriginDb = webOriginDb;
-    }
+        HttpContext httpContext = HttpContextAccessor.HttpContext;
 
-    public async Task OnAuthorizationAsync(AuthorizationFilterContext filterContext)
-    {
-        if (filterContext is not null)
-        {
-            Microsoft.Extensions.Primitives.StringValues apikey;
+        string givenApiKey = httpContext.Request.Headers["ApiKey"];
 
-            var key = filterContext.HttpContext.Request.Headers.TryGetValue("ApiKey", out apikey);
-            string givenApiKey = apikey.FirstOrDefault();
-
-            if (givenApiKey is not null)
+        if (givenApiKey is null) {
+            return Task.FromResult(AuthenticateResult.Fail("Header Not Found."));
+        } else {
+            Claim[] claims = new[]
             {
-                if ((await WebOriginDb.App.SingleAsync()).ApiKey.Equals(givenApiKey, StringComparison.OrdinalIgnoreCase)) {
-                    return;
-                }
+                new Claim(ClaimTypes.NameIdentifier, "ApiKey"),
+                new Claim(ClaimTypes.Name, "ApiKeyUser")
+            };
+
+            ClaimsIdentity claimsIdentity = new(claims, nameof(ApiKeyAuthorizationHandler));
+
+            AuthenticationTicket ticket = new(new ClaimsPrincipal(claimsIdentity), this.Scheme.Name);
+
+            return Task.FromResult(AuthenticateResult.Success(ticket));
+        }
+    }
+}
+
+public class ApiKeyAuthorizationRequirement : IAuthorizationRequirement
+{
+}
+
+public class ApiKeyAuthorizationHandler : AuthorizationHandler<ApiKeyAuthorizationRequirement>
+{
+   WebOriginDbContext WebOriginDb { get; init; }
+
+   IHttpContextAccessor HttpContextAccessor { get; init; }
+
+   public ApiKeyAuthorizationHandler(
+       IHttpContextAccessor httpContextAccessor,
+       WebOriginDbContext webOriginDb)
+   {
+       HttpContextAccessor = httpContextAccessor;
+
+       WebOriginDb = webOriginDb;
+   }
+
+    async protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, ApiKeyAuthorizationRequirement requirement)
+    {
+        HttpContext httpContext = HttpContextAccessor.HttpContext;
+
+        string givenApiKey = httpContext.Request.Headers["ApiKey"];
+
+        if (givenApiKey is null) {
+            context.Fail();
+        } else {
+            if ((await WebOriginDb.App.SingleAsync()).ApiKey.Equals(givenApiKey, StringComparison.OrdinalIgnoreCase)) {
+                context.Succeed(requirement);
             } else {
-                filterContext.HttpContext.Response.StatusCode = (int)HttpStatusCode.Unauthorized;
-                filterContext.HttpContext.Response.HttpContext.Features.Get<IHttpResponseFeature>().ReasonPhrase = "Please Provide ApiKey";
+                context.Fail();
             }
         }
     }
