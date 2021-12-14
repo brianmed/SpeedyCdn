@@ -40,6 +40,8 @@
     <EmbeddedResource Include="Sql/SpeedyCdnEdgeDb00005.Sql" />
     <EmbeddedResource Include="Sql/SpeedyCdnOriginDb00000.Sql" />
     <EmbeddedResource Include="Sql/SpeedyCdnOriginDb00001.Sql" />
+    <EmbeddedResource Include="Sql/SpeedyCdnOriginDb00002.Sql" />
+    <EmbeddedResource Include="Sql/SpeedyCdnOriginDb00003.Sql" />
   </ItemGroup>
 
   <ItemGroup>

@@ -4,7 +4,7 @@ public interface IQueryStringService
 {
     string GetValue(QueryString queryString, string name);
     QueryString CreateOnly(QueryString queryString, string keep);
-    QueryString CreateExcept(QueryString queryString, string remove);
+    QueryString CreateExcept(QueryString queryString, params string[] remove);
     List<(string Name, List<string> Args)> Args(QueryString queryString, Dictionary<string, HashSet<string>> requiredParameters);
 }
 
@@ -61,7 +61,7 @@ public class QueryStringService : IQueryStringService
         return QueryString.Create(only);
     }
 
-    public QueryString CreateExcept(QueryString queryString, string remove)
+    public QueryString CreateExcept(QueryString queryString, params string[] remove)
     {
         QueryStringEnumerable.Enumerator queryEnumerator = new QueryStringEnumerable(queryString.ToString())
             .GetEnumerator();
@@ -75,7 +75,7 @@ public class QueryStringService : IQueryStringService
                     .ToString()
                     .ToLower();
 
-            if (remove != name) {
+            if (remove.Contains(name) is false) {
                 allExcept.Add(
                     new KeyValuePair<string, string>(
                         queryEnumerator.Current.DecodeName().ToString(),

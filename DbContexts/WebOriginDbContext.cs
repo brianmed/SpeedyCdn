@@ -15,6 +15,10 @@ public class WebOriginDbContext : DbContext /**/
 {
     public DbSet<AppEntity> App { get; set; }
 
+    public DbSet<DisplayUrlEntity> DisplayUrl { get; set; }
+
+    public DbSet<UuidUrlEntity> UuidUrl { get; set; }
+
     // 
 
     public WebOriginDbContext()

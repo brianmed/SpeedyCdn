@@ -21,8 +21,14 @@ using BrianMed.AspNetCore.SerilogW3cMiddleware;
 using Serilog.Context;
 using Serilog.Events;
 
+using SpeedyCdn.Dto;
+
 partial class WebApp
 {
+    // public static SemaphoreSlim CreateOneUseMutex = new SemaphoreSlim(1, 1);
+
+    public static Dictionary<string, HashSet<long>> OneUseNumbers = new();
+
     async static public Task RunEdgeAsync(string[] args)
     {
         WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -132,8 +138,6 @@ partial class WebApp
 
             QueryString queryString = queryStringService.CreateExcept(httpRequest.QueryString, "signature");
 
-            Log.Debug($"{bucketName} {imageKey} {queryString}");
-
             if (hmacService.IsValid($"s3/images/{bucketName}/{imageKey}", httpRequest.QueryString) is false) {
                 return Results.StatusCode(404);
             }
@@ -178,8 +182,6 @@ partial class WebApp
 
             QueryString queryString = queryStringService.CreateExcept(httpRequest.QueryString, "signature");
 
-            Log.Debug($"{imagePath} {queryString}");
-
             if (hmacService.IsValid($"images/{imagePath}", httpRequest.QueryString) is false) {
                 return Results.StatusCode(404);
             }
@@ -223,8 +225,6 @@ partial class WebApp
         {
             using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", "Edge::v1/static");
 
-            Log.Debug($"{staticPath}");
-
             if (hmacService.IsValid($"static/{staticPath}", httpRequest.QueryString) is false) {
                 return Results.StatusCode(404);
             }
@@ -264,8 +264,6 @@ partial class WebApp
 
             QueryString queryString = queryStringService.CreateExcept(httpRequest.QueryString, "signature");
 
-            Log.Debug($"{queryString}");
-
             if (hmacService.IsValid("barcode", httpRequest.QueryString) is false) {
                 return Results.StatusCode(404);
             }
@@ -282,6 +280,98 @@ partial class WebApp
 
             Log.Debug($"Sending: {barcodeCacheElementEntity.BarcodeCacheElementId} as image/png");
             return Results.File(barcodeCacheStream, "image/png");
+        });
+
+        app.MapGet("/v1/display/{*display}", async (
+            [FromServices]IHmacService hmacService,
+            [FromServices]IQueryStringService queryStringService,
+            [FromServices]IHttpClientFactory HttpClientFactory,
+            HttpRequest httpRequest,
+            string display
+            ) => 
+        {
+            using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", "Edge::v1/display");
+
+            QueryString queryString = queryStringService.CreateExcept(httpRequest.QueryString, "signature");
+
+            if (hmacService.IsValid($"display/{display}", httpRequest.QueryString) is false) {
+                return Results.StatusCode(404);
+            }
+
+            string displayGet = $"{ConfigCtx.Options.EdgeOriginUrl}/v1/display/{display}";
+
+            HttpClient httpClient = HttpClientFactory.CreateClient();
+            DisplayUrlDto displayUrlDto = null;
+
+            if (ConfigCtx.Options.EdgeOriginApiKey is not null) {
+                Log.Debug($"Adding ApiKey to Headers");
+                httpClient.DefaultRequestHeaders.Add("ApiKey", ConfigCtx.Options.EdgeOriginApiKey);
+            }
+
+            using (HttpResponseMessage response = await httpClient.GetAsync(displayGet))
+            {
+                Log.Debug($"Redirect: {await response.Content.ReadAsStringAsync()}");
+
+                JsonSerializerOptions options = new()
+                {
+                    PropertyNameCaseInsensitive = true
+                };
+                                
+                displayUrlDto = JsonSerializer.Deserialize<DisplayUrlDto>(await response.Content.ReadAsStringAsync(), options);
+            }
+
+            if (displayUrlDto is null) {
+                return Results.BadRequest();
+            } else {
+                Log.Debug($"Redirect: {displayUrlDto.RedirectPath}{displayUrlDto.QueryString}");
+
+                return Results.Redirect($"{displayUrlDto.RedirectPath}{displayUrlDto.QueryString}");
+            }
+        });
+
+        app.MapGet("/v1/uuid/{uuidUrl}", async (
+            [FromServices]IHmacService hmacService,
+            [FromServices]IQueryStringService queryStringService,
+            [FromServices]IHttpClientFactory HttpClientFactory,
+            HttpRequest httpRequest,
+            string uuidUrl) => 
+        {
+            using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", "Edge::v1/uuid");
+
+            QueryString queryString = queryStringService.CreateExcept(httpRequest.QueryString, "signature");
+
+            if (hmacService.IsValid($"uuid/{uuidUrl}", httpRequest.QueryString) is false) {
+                return Results.StatusCode(404);
+            }
+
+            string uuidGet = $"{ConfigCtx.Options.EdgeOriginUrl}/v1/uuid/{uuidUrl}";
+
+            HttpClient httpClient = HttpClientFactory.CreateClient();
+            UuidUrlDto uuidUrlDto = null;
+
+            if (ConfigCtx.Options.EdgeOriginApiKey is not null) {
+                Log.Debug($"Adding ApiKey to Headers");
+                httpClient.DefaultRequestHeaders.Add("ApiKey", ConfigCtx.Options.EdgeOriginApiKey);
+            }
+
+            using (HttpResponseMessage response = await httpClient.GetAsync(uuidGet))
+            {
+                Log.Debug($"Redirect: {await response.Content.ReadAsStringAsync()}");
+
+                JsonSerializerOptions options = new()
+                {
+                    PropertyNameCaseInsensitive = true
+                };
+                                
+                uuidUrlDto = JsonSerializer.Deserialize<UuidUrlDto>(await response.Content.ReadAsStringAsync(), options);
+            }
+
+            if (uuidUrlDto is null) {
+                return Results.BadRequest();
+            } else {
+                Log.Debug($"Redirect: {uuidUrlDto.RedirectPath}{uuidUrlDto.QueryString}");
+                return Results.Redirect($"{uuidUrlDto.RedirectPath}{uuidUrlDto.QueryString}");
+            }
         });
 
         app.MapGet("/", async () => 

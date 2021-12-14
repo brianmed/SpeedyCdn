@@ -30,8 +30,12 @@ using Amazon.S3.Model;
 using BrianMed.AspNetCore.SerilogW3cMiddleware;
 using Serilog.Events;
 
+using SpeedyCdn.Dto;
+
 partial class WebApp
 {
+    public static SemaphoreSlim OneUuidUrlAtAtime = new SemaphoreSlim(1, 1);
+
     async static public Task RunOriginAsync(string[] args)
     {
         WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -146,8 +150,8 @@ partial class WebApp
             }
 
             if (ConfigCtx.Options.OriginShowKeys) {
-                Log.Information($"Origin ApiKey: {appEntity.ApiKey}");
-                Log.Information($"Origin SignatureKey: {appEntity.SignatureKey}");
+                Console.WriteLine($"Origin ApiKey: {appEntity.ApiKey}");
+                Console.WriteLine($"Origin SignatureKey: {appEntity.SignatureKey}");
 
                 Environment.Exit(0);
             }
@@ -244,7 +248,7 @@ partial class WebApp
             [Authorize(Policy = "ApiKey")]
             async (string filePath) => 
         {
-            Log.Debug($"static: {filePath}");
+            using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"Origin::v1/static");
 
             string fileName = Path.GetFileName(filePath);
             string contentType = "application/octect-stream";
@@ -259,7 +263,267 @@ partial class WebApp
             return Results.File(Path.Combine(ConfigCtx.Options.OriginSourceStaticDirectory) + Path.DirectorySeparatorChar + Path.Combine(filePath.Split('/')), contentType);
         });
 
-        app.MapGet("/v1/signature/{signatureType}",
+        app.MapGet("/v1/display",
+            [Authorize(Policy = "ApiKey")]
+            async (
+                [FromServices]WebOriginDbContext webOriginDb,
+                HttpRequest httpRequest) => 
+        {
+            using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"Origin::v1/display");
+
+            return (await webOriginDb.DisplayUrl
+                .OrderBy(v => v.DisplayUrlId)
+                .ToListAsync())
+                .Adapt<IEnumerable<DisplayUrlDto>>();
+        });
+
+        app.MapDelete("/v1/display/{*display}",
+            [Authorize(Policy = "ApiKey")]
+            async (
+                [FromServices]WebOriginDbContext webOriginDb,
+                string display) => 
+        {
+            using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"Origin::v1/display/display");
+
+            DisplayUrlEntity displayUrlEntity = await webOriginDb.DisplayUrl
+                .Where(v => v.Display == display)
+                .SingleAsync();
+
+            webOriginDb.Remove(displayUrlEntity);
+
+            await webOriginDb.SaveChangesAsync();
+        });
+
+        app.MapGet("/v1/display/{*display}",
+            [Authorize(Policy = "ApiKey")]
+            async (
+                [FromServices]WebOriginDbContext webOriginDb,
+                HttpRequest httpRequest,
+                string display) => 
+        {
+            using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"Origin::v1/display/display");
+
+            DisplayUrlEntity displayUrlEntity = null;
+
+            try
+            {
+                displayUrlEntity = await webOriginDb.DisplayUrl
+                    .Where(v => v.Display == display)
+                    .SingleOrDefaultAsync();
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, $"Issue Retrieving Display Url {display}");
+            }
+
+            return new DisplayUrlDto()
+            {
+                Display = display,
+                RedirectPath = displayUrlEntity?.RedirectPath,
+                QueryString = displayUrlEntity?.QueryString
+            };
+        });
+
+        app.MapPost("/v1/display/{*redirectPath}",
+            [Authorize(Policy = "ApiKey")]
+            async (
+                [FromServices] WebOriginDbContext webOriginDb,
+                HttpRequest httpRequest,
+                [FromServices] IHmacService hmacService,
+                [FromServices] IQueryStringService queryStringService,
+                [FromQuery] string display,
+                string redirectPath,
+                UrlGenerationDto urlGenerationDto) => 
+        {
+            using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"Origin::v1/display/redirectPath");
+
+            Log.Debug($"display: {redirectPath}");
+
+            string key = (await webOriginDb.App
+                .SingleAsync())
+                .SignatureKey;
+
+            string redirectQueryString;
+
+            if (urlGenerationDto.HasSignature) {
+                QueryString sans = queryStringService
+                    .CreateExcept(httpRequest.QueryString, "signature", "display");
+
+                string redirectSignature = hmacService.Hash(key, $"{redirectPath}{sans}");
+
+                redirectQueryString = sans
+                    .Add("signature", redirectSignature)
+                    .ToString();
+            } else {
+                redirectQueryString = httpRequest.QueryString
+                    .ToString();
+            }
+            try
+            {
+                DisplayUrlEntity displayUrlEntity = new()
+                {
+                    Display = display,
+                    RedirectPath = $"/v1/{redirectPath}",
+                    QueryString = redirectQueryString
+                };
+
+                webOriginDb.Add(displayUrlEntity);
+
+                await webOriginDb.SaveChangesAsync();
+            }
+            catch
+            {
+                display = null;
+            }
+
+            return new
+            {
+                Display = display,
+                DisplaySignature = (display is null) ? display : hmacService.Hash(key, $"display/{display}")
+            };
+        });
+
+        app.MapGet("/v1/uuid",
+            [Authorize(Policy = "ApiKey")]
+            async (
+                [FromServices]WebOriginDbContext webOriginDb,
+                HttpRequest httpRequest) => 
+        {
+            using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"Origin::v1/uuid");
+
+            return (await webOriginDb.UuidUrl
+                .OrderBy(v => v.UuidUrlId)
+                .ToListAsync())
+                .Adapt<IEnumerable<UuidUrlDto>>();
+        });
+
+        app.MapDelete("/v1/uuid/{uuid}",
+            [Authorize(Policy = "ApiKey")]
+            async (
+                [FromServices]WebOriginDbContext webOriginDb,
+                string uuid) => 
+        {
+            using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"Origin::v1/uuid/uuid");
+
+            UuidUrlEntity uuidUrlEntity = await webOriginDb.UuidUrl
+                .Where(v => v.Uuid == uuid)
+                .SingleAsync();
+
+            webOriginDb.Remove(uuidUrlEntity);
+
+            await webOriginDb.SaveChangesAsync();
+        });
+
+        app.MapGet("/v1/uuid/{*uuidUrl}",
+            [Authorize(Policy = "ApiKey")]
+            async (
+                [FromServices]WebOriginDbContext webOriginDb,
+                HttpRequest httpRequest,
+                string uuidUrl) => 
+        {
+            using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"Origin::v1/uuid/uuidUrl");
+
+            UuidUrlEntity uuidUrlEntity = null;
+
+            try
+            {
+                uuidUrlEntity = await webOriginDb.UuidUrl
+                    .Where(v => v.Uuid == uuidUrl)
+                    .SingleOrDefaultAsync();
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, $"Issue Retrieving UuidUrl {uuidUrl}");
+            }
+
+            return new UuidUrlDto()
+            {
+                Uuid = uuidUrl,
+                RedirectPath = uuidUrlEntity?.RedirectPath,
+                QueryString = uuidUrlEntity?.QueryString
+            };
+        });
+
+        app.MapPost("/v1/uuid/{*redirectPath}",
+            [Authorize(Policy = "ApiKey")]
+            async (
+                [FromServices]WebOriginDbContext webOriginDb,
+                HttpRequest httpRequest,
+                [FromServices]IHmacService hmacService,
+                [FromServices]IQueryStringService queryStringService,
+                string redirectPath, UrlGenerationDto urlGenerationDto) => 
+        {
+            using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"Origin::v1/uuid/redirectPath");
+
+            Log.Debug($"uuid: {redirectPath}");
+
+            int uuidSeed = 0;
+
+            await OneUuidUrlAtAtime.WaitAsync();
+
+            try
+            {
+                if (DateTime.UtcNow.Year >= 2020) {
+                    uuidSeed = (int)((DateTime.UtcNow - new DateTime(2020, 1, 1, 0, 0, 0)).TotalMilliseconds / 100L);		
+
+                    await Task.Delay(10);
+                } else {
+                    uuidSeed = (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+                    await Task.Delay(1_000);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, $"Issue Generating Uuid {redirectPath}");
+            }
+            finally
+            {
+                OneUuidUrlAtAtime.Release();
+            }
+                
+            Random r = new Random(uuidSeed);
+            byte[] guid = new byte[16];
+            r.NextBytes(guid);
+
+            string uuid = new Guid(guid).ToString();
+
+            string key = (await webOriginDb.App
+                .SingleAsync())
+                .SignatureKey;
+
+            string redirectQueryString;
+
+            if (urlGenerationDto.HasSignature) {
+                string redirectSignature = hmacService.Hash(key, $"{redirectPath}{httpRequest.QueryString}");
+
+                redirectQueryString = httpRequest.QueryString
+                    .Add("signature", redirectSignature)
+                    .ToString();
+            } else {
+                redirectQueryString = httpRequest.QueryString
+                    .ToString();
+            }
+
+            UuidUrlEntity uuidUrlEntity = new()
+            {
+                Uuid = uuid,
+                RedirectPath = $"/v1/{redirectPath}",
+                QueryString = redirectQueryString
+            };
+
+            webOriginDb.Add(uuidUrlEntity);
+
+            await webOriginDb.SaveChangesAsync();
+
+            return new
+            {
+                Uuid = uuid,
+                UuidSignature = hmacService.Hash(key, $"uuid/{uuid}")
+            };
+        });
+
+        app.MapPost("/v1/signature/{signatureType}",
             [Authorize(Policy = "ApiKey")]
             async (
                 [FromServices]WebOriginDbContext webOriginDb,
@@ -280,7 +544,7 @@ partial class WebApp
             return new { Signature = hmacService.Hash(key, $"{signatureType}{queryString}") };
         });
 
-        app.MapGet("/v1/signature/{signatureType}/{*filePath}",
+        app.MapPost("/v1/signature/{signatureType}/{*filePath}",
             [Authorize(Policy = "ApiKey")]
             async (
                 [FromServices]WebOriginDbContext webOriginDb,
