@@ -15,7 +15,8 @@ public class Options
     [Option("originUrls", Required = false, HelpText = "Origin Urls Specifying the Addresses to Listen on (eg http://*:8080)")]
     public string? OriginUrls { get; internal set; }
 
-    // 
+    [Option("originFrontendUri", Required = false, HelpText = "Origin User Facing Uri (eg https://192.168.9.12:8080)")]
+    public Uri OriginFrontendUri { get; internal set; } = new("http://localhost:8080");
 
     private string _originSourceDirectory;
     [Option("originSourceDirectory", Required = false, HelpText = "Directory for Source Files")]
@@ -37,7 +38,7 @@ public class Options
     }
 
     private string _originSourceImagesDirectory;
-    [Option("orginSourceImagesDirectory", Required = false, HelpText = "Directory for Source Images")]
+    [Option("originSourceImagesDirectory", Required = false, HelpText = "Directory for Source Images")]
     public string OriginSourceImagesDirectory
     {
         get
@@ -56,7 +57,7 @@ public class Options
     }
 
     private string _originSourceStaticDirectory;
-    [Option("orginSourceStaticDirectory", Required = false, HelpText = "Directory for Source Static Files")]
+    [Option("originSourceStaticDirectory", Required = false, HelpText = "Directory for Source Static Files")]
     public string OriginSourceStaticDirectory
     {
         get
@@ -74,11 +75,20 @@ public class Options
         }
     }
 
-    [Option("originNumImageOpQueues", Required = false, HelpText = "Number of Image Operation Queues")]
-    public int OriginNumImageOpQueues { get; private set; }
+    [Option("originNumImageOps", Required = false, HelpText = "Number of Image Operation Queues")]
+    public int OriginNumImageOps { get; private set; }
 
     [Option("originEnableSensitiveLogging", Required = false, HelpText = "Origin Log Sensitive Information to Sql Log")]
     public bool OriginEnableSensitiveLogging { get; internal set; }
+
+    [Option("originS3AccessKey", Required = false, HelpText = "Origin S3 Access Key")]
+    public string OriginS3AccessKey { get; internal set; }
+
+    [Option("originS3SecretKey", Required = false, HelpText = "Origin S3 Secret Key")]
+    public string OriginS3SecretKey { get; internal set; }
+
+    [Option("originS3ServiceUrl", Required = false, HelpText = "Origin S3 Service Url")]
+    public string OriginS3ServiceUrl { get; internal set; }
 
     [Option("originShowKeys", Required = false, HelpText = "Origin Show Api Key and Signature Key")]
     public bool OriginShowKeys { get; internal set; }
@@ -90,7 +100,7 @@ public class Options
     public string EdgeOriginUrl { get; private set; }
 
     private string _edgeCacheDirecotry;
-    [Option("edgeCacheDirectory", Required = false, HelpText = "Cache Base Directory")]
+    [Option("edgeCacheDirectory", Required = false, HelpText = "Edge Cache Base Directory")]
     public string EdgeCacheDirectory
     {
         get
@@ -109,7 +119,7 @@ public class Options
     }
 
     private string _edgeCacheBarcodesDirecotry;
-    [Option("edgeCacheBarcodesDirectory", Required = false, HelpText = "Directory for Cached Barcodes (can be relative)")]
+    [Option("edgeCacheBarcodesDirectory", Required = false, HelpText = "Edge Directory for Cached Barcodes (can be relative)")]
     public string EdgeCacheBarcodesDirectory
     {
         get
@@ -128,7 +138,7 @@ public class Options
     }
 
     private string _edgeCacheImagesDirecotry;
-    [Option("edgeCacheImagesDirectory", Required = false, HelpText = "Directory for Cached Images (can be relative)")]
+    [Option("edgeCacheImagesDirectory", Required = false, HelpText = "Edge Directory for Cached Images (can be relative)")]
     public string EdgeCacheImagesDirectory
     {
         get
@@ -147,7 +157,7 @@ public class Options
     }
 
     private string _edgeCacheStaticDirecotry;
-    [Option("edgeCacheStaticDirectory", Required = false, HelpText = "Directory for Cached Static Files (can be relative)")]
+    [Option("edgeCacheStaticDirectory", Required = false, HelpText = "Edge Directory for Cached Static Files (can be relative)")]
     public string EdgeCacheStaticDirectory
     {
         get
@@ -162,6 +172,25 @@ public class Options
         private set
         {
             _edgeCacheStaticDirecotry = value;
+        }
+    }
+
+    private string _edgeCacheS3ImagesDirecotry;
+    [Option("edgeCacheS3ImagesDirectory", Required = false, HelpText = "Edge Directory for Cached S3 Images (can be relative)")]
+    public string EdgeCacheS3ImagesDirectory
+    {
+        get
+        {
+            if (_edgeCacheS3ImagesDirecotry is null) {
+                return Path.Combine(EdgeCacheDirectory, "S3", "Images");
+            } else {
+                return _edgeCacheS3ImagesDirecotry;
+            }
+        }
+
+        private set
+        {
+            _edgeCacheS3ImagesDirecotry = value;
         }
     }
 
@@ -261,7 +290,7 @@ public class Options
 
     public Options()
     {
-        OriginNumImageOpQueues = Environment.ProcessorCount;
+        OriginNumImageOps = Environment.ProcessorCount;
 
         EdgeCacheInBytes = 1_073_741_824L * 5L;
 

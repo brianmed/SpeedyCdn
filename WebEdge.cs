@@ -68,6 +68,7 @@ partial class WebApp
 
         builder.Services.AddTransient<IDbUpEdgeService, DbUpEdgeService>();
         builder.Services.AddScoped<IBarcodeService, BarcodeService>();
+        builder.Services.AddScoped<ICacheElementService, CacheElementService>();
         builder.Services.AddScoped<ICachePathService, CachePathService>();
         builder.Services.AddScoped<IDownloadService, DownloadService>();
         builder.Services.AddScoped<IHmacService, HmacService>();
@@ -75,6 +76,8 @@ partial class WebApp
         builder.Services.AddScoped<IQueryStringService, QueryStringService>();
 
         // Build
+
+        builder.Services.AddHostedService<EdgePruneCacheHostedService>();
 
         WebApplication app = builder.Build();
 
@@ -115,8 +118,54 @@ partial class WebApp
         
         app.UseSerilogW3cMiddleware();
 
+        app.MapGet("/v1/s3/images/{bucketName}/{*imageKey}", async (
+            [FromServices]ICacheElementService cacheElementService,
+            [FromServices]ICachePathService cachePathService,
+            [FromServices]IDownloadService download,
+            [FromServices]IImageOperationService imageOperation,
+            [FromServices]IHmacService hmacService,
+            [FromServices]IQueryStringService queryStringService,
+            HttpRequest httpRequest,
+            string bucketName, string imageKey) => 
+        {
+            using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", "Edge::v1/s3/images");
+
+            QueryString queryString = queryStringService.CreateExcept(httpRequest.QueryString, "signature");
+
+            Log.Debug($"{bucketName} {imageKey} {queryString}");
+
+            if (hmacService.IsValid($"s3/images/{bucketName}/{imageKey}", httpRequest.QueryString) is false) {
+                return Results.StatusCode(404);
+            }
+
+            string fileName = Path.GetFileName(imageKey);
+            string contentType = "application/octect-stream";
+
+            FileExtensionContentTypeProvider provider = new();
+
+            if (provider.TryGetContentType(fileName, out contentType) is false)
+            {
+                Log.Warning($"No content type found for {fileName}");
+            }
+
+            string cacheImagePathJson = JsonSerializer.Serialize(new[] { $"{bucketName}/{imageKey}" });
+            string cacheImagePath = cachePathService.RelativeWithBucket(cacheImagePathJson, fileName);
+            await download.GetS3ImageAsync(bucketName, imageKey, cacheImagePath);
+
+            string cacheImagePathAndQueryStringJson = JsonSerializer.Serialize(new[] { $"{bucketName}/{imageKey}", queryString.ToString() });
+            string cacheImagePathAndQueryString = cachePathService.RelativeWithBucket(cacheImagePathAndQueryStringJson, fileName);
+            await imageOperation.RunAllFromQueryAsync(cacheImagePath, queryString, cacheImagePathAndQueryString, $"{bucketName}/{imageKey}", AppCtx.ConfigCtx.Options.EdgeCacheS3ImagesDirectory);
+            
+            S3ImageCacheElementEntity s3ImageCacheElementEntity = await cacheElementService
+                .UpsertS3ImageAsync(cacheImagePath, cacheImagePathAndQueryString);
+
+            Log.Debug($"Sending: {s3ImageCacheElementEntity.S3ImageCacheElementId} - {fileName} as {contentType}");
+            return Results.File(Path.Combine(ConfigCtx.Options.EdgeCacheS3ImagesDirectory, cacheImagePathAndQueryString), contentType);
+        });
+
         app.MapGet("/v1/images/{*imagePath}", async (
             [FromServices]WebEdgeDbContext webEdgeDb,
+            [FromServices]ICacheElementService cacheElementService,
             [FromServices]ICachePathService cachePathService,
             [FromServices]IDownloadService download,
             [FromServices]IImageOperationService imageOperation,
@@ -127,11 +176,13 @@ partial class WebApp
         {
             using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", "Edge::v1/images");
 
+            QueryString queryString = queryStringService.CreateExcept(httpRequest.QueryString, "signature");
+
+            Log.Debug($"{imagePath} {queryString}");
+
             if (hmacService.IsValid($"images/{imagePath}", httpRequest.QueryString) is false) {
                 return Results.StatusCode(404);
             }
-
-            QueryString queryString = queryStringService.CreateExcept(httpRequest.QueryString, "signature");
 
             string fileName = Path.GetFileName(imagePath);
             string contentType = "application/octect-stream";
@@ -149,58 +200,19 @@ partial class WebApp
 
             string cacheImagePathAndQueryStringJson = JsonSerializer.Serialize(new[] { imagePath, queryString.ToString() });
             string cacheImagePathAndQueryString = cachePathService.RelativeWithBucket(cacheImagePathAndQueryStringJson, fileName);
-            await imageOperation.RunAllFromQueryAsync(cacheImagePath, queryString, cacheImagePathAndQueryString, imagePath);
+            await imageOperation.RunAllFromQueryAsync(cacheImagePath, queryString, cacheImagePathAndQueryString, imagePath, AppCtx.ConfigCtx.Options.EdgeCacheImagesDirectory);
             
-            FileStream imageOperationCacheFS = new FileStream(Path.Combine(ConfigCtx.Options.EdgeCacheImagesDirectory, cacheImagePathAndQueryString), FileMode.Open);
-
-            TimeSpan oneHour = TimeSpan.FromHours(1);
-            TimeSpan oneWeek = TimeSpan.FromDays(7);
-
-            ImageCacheElementEntity imageCacheElementEntity = (await webEdgeDb.ImageCacheElements.FromSqlInterpolated($@"
-                    INSERT OR IGNORE INTO ImageCacheElements ( 
-                        CachePath,
-                        FileSizeBytes,
-                        LastAccessedUtc,
-                        ExpireUtc
-                    ) VALUES (
-                        {cacheImagePath},
-                        {new FileInfo(Path.Combine(ConfigCtx.Options.EdgeCacheImagesDirectory, cacheImagePath)).Length},
-                        strftime('%s', 'now') - (strftime('%s', 'now') % {oneHour.TotalSeconds}),
-                        strftime('%s', 'now') + {oneWeek.TotalSeconds}
-                    );
-                    
-                    INSERT INTO ImageCacheElements ( 
-                        CachePath,
-                        FileSizeBytes,
-                        LastAccessedUtc,
-                        ExpireUtc
-                    ) VALUES (
-                        {cacheImagePathAndQueryString},
-                        {imageOperationCacheFS.Length},
-                        strftime('%s', 'now') - (strftime('%s', 'now') % {oneHour.TotalSeconds}),
-                        strftime('%s', 'now') + {oneWeek.TotalSeconds}
-                    )
-                    
-                    ON CONFLICT (CachePath)
-                    DO UPDATE
-                        SET LastAccessedUtc = strftime('%s', 'now') - (strftime('%s', 'now') % {oneHour.TotalSeconds}),
-                            ExpireUtc = strftime('%s', 'now') + {oneWeek.TotalSeconds},
-                            Updated = CURRENT_TIMESTAMP
-                        WHERE CachePath = {cacheImagePathAndQueryString}
-                    
-                    RETURNING *;
-                ")
-                .ToListAsync())
-                .Single();
+            ImageCacheElementEntity imageCacheElementEntity = await cacheElementService
+                .UpsertImageAsync(cacheImagePath, cacheImagePathAndQueryString);
 
             // Sending
 
             Log.Debug($"Sending: {imageCacheElementEntity.ImageCacheElementId} - {fileName} as {contentType}");
-
-            return Results.File(imageOperationCacheFS, contentType);
+            return Results.File(Path.Combine(ConfigCtx.Options.EdgeCacheImagesDirectory, cacheImagePathAndQueryString), contentType);
         });
 
         app.MapGet("/v1/static/{*staticPath}", async (
+            [FromServices]ICacheElementService cacheElementService,
             [FromServices]ICachePathService cachePathService,
             [FromServices]IDownloadService download,
             [FromServices]IHmacService hmacService,
@@ -210,6 +222,8 @@ partial class WebApp
             string staticPath) => 
         {
             using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", "Edge::v1/static");
+
+            Log.Debug($"{staticPath}");
 
             if (hmacService.IsValid($"static/{staticPath}", httpRequest.QueryString) is false) {
                 return Results.StatusCode(404);
@@ -229,42 +243,17 @@ partial class WebApp
             string cacheStaticPath = cachePathService.RelativeWithBucket(cacheStaticPathJson, fileName);
             await download.GetStaticAsync(staticPath, cacheStaticPath);
 
-            FileStream staticCacheFS = new FileStream(Path.Combine(ConfigCtx.Options.EdgeCacheStaticDirectory, cacheStaticPath), FileMode.Open);
+            StaticCacheElementEntity staticCacheElementEnitty = await cacheElementService
+                .UpsertStaticAsync(cacheStaticPath);
 
-            TimeSpan oneHour = TimeSpan.FromHours(1);
-            TimeSpan oneWeek = TimeSpan.FromDays(7);
+            Log.Debug($"Sending: {staticCacheElementEnitty.StaticCacheElementId} as {contentType}");
 
-            StaticCacheElementEntity staticCacheElementEntity = (await webEdgeDb.StaticCacheElements.FromSqlInterpolated($@"
-                    INSERT INTO StaticCacheElements ( 
-                        CachePath,
-                        FileSizeBytes,
-                        LastAccessedUtc,
-                        ExpireUtc
-                    ) VALUES (
-                        {cacheStaticPath},
-                        {staticCacheFS.Length},
-                        strftime('%s', 'now') - (strftime('%s', 'now') % {oneHour.TotalSeconds}),
-                        strftime('%s', 'now') + {oneWeek.TotalSeconds}
-                    )
-                    
-                    ON CONFLICT (CachePath)
-                    DO UPDATE
-                        SET LastAccessedUtc = strftime('%s', 'now') - (strftime('%s', 'now') % {oneHour.TotalSeconds}),
-                            ExpireUtc = strftime('%s', 'now') + {oneWeek.TotalSeconds},
-                            Updated = CURRENT_TIMESTAMP
-                        WHERE CachePath = {cacheStaticPath}
-                    
-                    RETURNING *;
-                ")
-                .ToListAsync())
-                .Single();
-
-            Log.Debug($"Sending: {staticCacheFS.Name} as {contentType}");
-            return Results.File(staticCacheFS, contentType);
+            return Results.File(Path.Combine(ConfigCtx.Options.EdgeCacheStaticDirectory, cacheStaticPath), contentType);
         });
 
         app.MapGet("/v1/barcode", async (
             [FromServices]IBarcodeService barcodeService,
+            [FromServices]ICacheElementService cacheElementService,
             [FromServices]ICachePathService cachePathService,
             [FromServices]IHmacService hmacService,
             [FromServices]IQueryStringService queryStringService,
@@ -273,11 +262,13 @@ partial class WebApp
         {
             using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", "Edge::v1/barcode");
 
+            QueryString queryString = queryStringService.CreateExcept(httpRequest.QueryString, "signature");
+
+            Log.Debug($"{queryString}");
+
             if (hmacService.IsValid("barcode", httpRequest.QueryString) is false) {
                 return Results.StatusCode(404);
             }
-
-            QueryString queryString = queryStringService.CreateExcept(httpRequest.QueryString, "signature");
 
             string cacheBarcodeQueryStringJson = JsonSerializer.Serialize(new[] { queryString.ToString() });
             string cacheBarcodeQueryString = cachePathService.RelativeWithBucket(cacheBarcodeQueryStringJson, String.Empty);
@@ -285,36 +276,11 @@ partial class WebApp
             barcodeService.GenerateFromQueryString(cacheBarcodeQueryString, queryString);
             
             FileStream barcodeCacheStream = new FileStream(Path.Combine(ConfigCtx.Options.EdgeCacheBarcodesDirectory, cacheBarcodeQueryString), FileMode.Open);
-            
-            TimeSpan oneHour = TimeSpan.FromHours(1);
-            TimeSpan oneWeek = TimeSpan.FromDays(7);
 
-            BarcodeCacheElementEntity barcodeCacheElementEntity = (await webEdgeDb.BarcodeCacheElements.FromSqlInterpolated($@"
-                    INSERT INTO BarcodeCacheElements ( 
-                        CachePath,
-                        FileSizeBytes,
-                        LastAccessedUtc,
-                        ExpireUtc
-                    ) VALUES (
-                        {cacheBarcodeQueryString},
-                        {barcodeCacheStream.Length},
-                        strftime('%s', 'now') - (strftime('%s', 'now') % {oneHour.TotalSeconds}),
-                        strftime('%s', 'now') + {oneWeek.TotalSeconds}
-                    )
-                    
-                    ON CONFLICT (CachePath)
-                    DO UPDATE
-                        SET LastAccessedUtc = strftime('%s', 'now') - (strftime('%s', 'now') % {oneHour.TotalSeconds}),
-                            ExpireUtc = strftime('%s', 'now') + {oneWeek.TotalSeconds},
-                            Updated = CURRENT_TIMESTAMP
-                        WHERE CachePath = {cacheBarcodeQueryString}
-                    
-                    RETURNING *;
-                ")
-                .ToListAsync())
-                .Single();
+            BarcodeCacheElementEntity barcodeCacheElementEntity = await cacheElementService
+                .UpsertBarcodeAsync(cacheBarcodeQueryString);
 
-            Log.Debug($"Sending: {barcodeCacheStream.Name} as image/png");
+            Log.Debug($"Sending: {barcodeCacheElementEntity.BarcodeCacheElementId} as image/png");
             return Results.File(barcodeCacheStream, "image/png");
         });
 

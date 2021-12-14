@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+
 public interface IBarcodeService
 {
     void GenerateFromQueryString(string barcodePath, QueryString queryString);
@@ -7,6 +9,8 @@ public class BarcodeService : IBarcodeService
 {
     public IQueryStringService QueryStringService { get; init; }
 
+    static ConcurrentDictionary<string, bool> InFlightBarcodeOperations = new();
+
     public BarcodeService(IQueryStringService queryStringService)
     {
         QueryStringService = queryStringService;
@@ -14,20 +18,57 @@ public class BarcodeService : IBarcodeService
 
     public void GenerateFromQueryString(string barcodePath, QueryString queryString)
     {
-        Dictionary<string, HashSet<string>> barcodeRequiredParameters = new();
+        using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"{nameof(BarcodeService)}.{nameof(GenerateFromQueryString)}");
 
-        barcodeRequiredParameters.Add("qrcode", new());
+        try
+        {
+            SpinWait sw = new SpinWait();
 
-        barcodeRequiredParameters["qrcode"].Add("qrcode.Text");
+            while (InFlightBarcodeOperations.TryAdd(barcodePath, true) is false)
+            {
+                sw.SpinOnce();
+            }
 
-        List<(string Name, List<string> Args)> args = QueryStringService.Args(queryString, barcodeRequiredParameters);
+            string barcodeAbsPath = Path.Combine(ConfigCtx.Options.EdgeCacheBarcodesDirectory, barcodePath);
 
-        BarcodeFormat barcodeFormat = BarcodeFormatFactory(args.First().Name);
+            Directory.CreateDirectory(Path.GetDirectoryName(barcodeAbsPath));
 
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(ConfigCtx.Options.EdgeCacheBarcodesDirectory, barcodePath)));
-        FileStream barcodeStream = new FileStream(Path.Combine(ConfigCtx.Options.EdgeCacheBarcodesDirectory, barcodePath), FileMode.OpenOrCreate);
+            if (File.Exists(barcodeAbsPath)) {
+                if (new FileInfo(barcodeAbsPath).Length > 0) {
+                    Log.Debug($"Barcode Cache Hit: {queryString}");
 
-        barcodeFormat.Generate(barcodeStream, args.First().Args);
+                    return;
+                } else {
+                    Log.Debug($"Zero Byte Barcode Cache File: {queryString}");
+                }
+            } else {
+                Log.Debug($"No Barcode Cache File Found: {queryString}");
+            }
+
+            Dictionary<string, HashSet<string>> barcodeRequiredParameters = new();
+
+            barcodeRequiredParameters.Add("qrcode", new());
+
+            barcodeRequiredParameters["qrcode"].Add("qrcode.Text");
+
+            List<(string Name, List<string> Args)> args = QueryStringService.Args(queryString, barcodeRequiredParameters);
+
+            BarcodeFormat barcodeFormat = BarcodeFormatFactory(args.First().Name);
+
+            FileStream barcodeStream = new FileStream(Path.Combine(ConfigCtx.Options.EdgeCacheBarcodesDirectory, barcodePath), FileMode.OpenOrCreate);
+
+            barcodeFormat.Generate(barcodeStream, args.First().Args);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, $"Issue Generating Barcode: {barcodePath} {queryString}");
+        }
+        finally
+        {
+            if (InFlightBarcodeOperations.TryRemove(barcodePath, out bool whence) is false) {
+                Log.Error($"Issue Removing {barcodePath}");
+            }
+        }
     }
 
     private BarcodeFormat BarcodeFormatFactory(string formatName)

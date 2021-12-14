@@ -4,6 +4,7 @@ using Serilog.Context;
 
 public interface IDownloadService
 {
+    Task GetS3ImageAsync(string s3Bucket, string s3Key, string cachePath);
     Task GetImageAsync(string imagePath, string cachePath);
     Task GetStaticAsync(string staticPath, string cachePath);
 }
@@ -12,12 +13,58 @@ public class DownloadService : IDownloadService
 {
     IHttpClientFactory HttpClientFactory { get; init; }
 
+    static ConcurrentDictionary<string, bool> InFlightS3ImagePaths = new();
     static ConcurrentDictionary<string, bool> InFlightImagePaths = new();
     static ConcurrentDictionary<string, bool> InFlightStaticPaths = new();
 
     public DownloadService(IHttpClientFactory httpClientFactory)
     {
         HttpClientFactory = httpClientFactory;
+    }
+
+    async public Task GetS3ImageAsync(string s3Bucket, string s3Key, string _cachePath)
+    {
+        using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"{nameof(DownloadService)}.{nameof(GetS3ImageAsync)}");
+
+        string url = $"{ConfigCtx.Options.EdgeOriginUrl}/v1/s3/images/{s3Bucket}/{s3Key}";
+
+        SpinWait sw = new SpinWait();
+
+        while (InFlightS3ImagePaths.TryAdd($"{s3Bucket}/{s3Key}", true) is false)
+        {
+            sw.SpinOnce();
+        }
+
+        try
+        {
+            string cachePath = Path.Combine(ConfigCtx.Options.EdgeCacheS3ImagesDirectory, _cachePath);
+
+            if (File.Exists(cachePath)) {
+                if (new FileInfo(cachePath).Length > 0) {
+                    Log.Debug($"Cache Hit: {url}");
+
+                    return;
+                } else {
+                    Log.Debug($"Zero Byte Cache File: {url}");
+                }
+            } else {
+                Log.Debug($"No Cache File Found: {url}");
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(cachePath));
+
+            await DownloadAsync(url, cachePath);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, $"Issue Processing {url}");
+        }
+        finally
+        {
+            if (InFlightS3ImagePaths.TryRemove($"{s3Bucket}/{s3Key}", out bool whence) is false) {
+                Log.Error($"Issue Removing {s3Bucket}/{s3Key}");
+            }
+        }
     }
 
     async public Task GetImageAsync(string imagePath, string _cachePath)

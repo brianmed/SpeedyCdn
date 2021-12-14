@@ -14,6 +14,8 @@ public class WebEdgeDbContext : DbContext
 
     public DbSet<ImageCacheElementEntity> ImageCacheElements { get; set; }
 
+    public DbSet<S3ImageCacheElementEntity> S3ImageCacheElements { get; set; }
+
     public DbSet<StaticCacheElementEntity> StaticCacheElements { get; set; }
 
     // 

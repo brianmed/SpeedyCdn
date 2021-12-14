@@ -14,6 +14,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="AWSSDK.S3" Version="3.7.7.2" />
     <PackageReference Include="BrianMed.AspNetCore.SerilogW3cMiddleware" Version="0.1.1" />
     <PackageReference Include="CommandLineParser" Version="2.8.0" />
     <PackageReference Include="dbup-core" Version="4.5.0" />
@@ -36,6 +37,7 @@
     <EmbeddedResource Include="Sql/SpeedyCdnEdgeDb00002.Sql" />
     <EmbeddedResource Include="Sql/SpeedyCdnEdgeDb00003.Sql" />
     <EmbeddedResource Include="Sql/SpeedyCdnEdgeDb00004.Sql" />
+    <EmbeddedResource Include="Sql/SpeedyCdnEdgeDb00005.Sql" />
     <EmbeddedResource Include="Sql/SpeedyCdnOriginDb00000.Sql" />
     <EmbeddedResource Include="Sql/SpeedyCdnOriginDb00001.Sql" />
   </ItemGroup>

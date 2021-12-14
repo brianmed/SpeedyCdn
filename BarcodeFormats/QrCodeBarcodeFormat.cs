@@ -56,8 +56,8 @@ public class QrCodeBarcodeFormat : BarcodeFormat
         {
             CharacterSet = "UTF-8",
             ErrorCorrection = ZXing.QrCode.Internal.ErrorCorrectionLevel.H,
-            Height = 400,
-            Width = 400
+            Height = Int32.Parse(args.Height),
+            Width = Int32.Parse(args.Width)
         };
 
         writer.Options = qr;

@@ -25,6 +25,8 @@ using SpeedyCdn.Enums;
 using SpeedyCdn.Server.Entities.Origin;
 // 
 
+using Amazon.S3;
+using Amazon.S3.Model;
 using BrianMed.AspNetCore.SerilogW3cMiddleware;
 using Serilog.Events;
 
@@ -185,6 +187,10 @@ partial class WebApp
             [Authorize(Policy = "ApiKey")]
             async (string imagePath) => 
         {
+            using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"Origin::v1/images");
+
+            Log.Debug($"images: {imagePath}");
+
             string fileName = Path.GetFileName(imagePath);
             string contentType = "application/octect-stream";
 
@@ -198,10 +204,48 @@ partial class WebApp
             return Results.File(Path.Combine(ConfigCtx.Options.OriginSourceImagesDirectory) + Path.DirectorySeparatorChar + Path.Combine(imagePath.Split('/')), contentType);
         });
 
+        app.MapGet("/v1/s3/{fileType}/{bucketName}/{*imageKey}",
+            [Authorize(Policy = "ApiKey")]
+            async (string fileType, string bucketName, string imageKey) => 
+        {
+            using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"Origin::v1/s3/{fileType}");
+
+            Log.Debug($"s3: {AppCtx.ConfigCtx.Options.OriginS3ServiceUrl} {bucketName} {imageKey}");
+
+            string fileName = Path.GetFileName(imageKey);
+            string contentType = "application/octect-stream";
+
+            FileExtensionContentTypeProvider provider = new();
+
+            if (provider.TryGetContentType(fileName, out contentType) is false)
+            {
+                Log.Warning($"No content type found for {fileName}");
+            }
+
+            AmazonS3Config config = new AmazonS3Config();
+            config.ServiceURL = AppCtx.ConfigCtx.Options.OriginS3ServiceUrl;
+            
+            using AmazonS3Client s3Client = new AmazonS3Client(
+                AppCtx.ConfigCtx.Options.OriginS3AccessKey,
+                AppCtx.ConfigCtx.Options.OriginS3SecretKey,
+                config);
+
+            GetObjectRequest request = new GetObjectRequest();
+            request.BucketName = bucketName;
+            request.Key        = imageKey;
+
+            Log.Debug($"s3: {AppCtx.ConfigCtx.Options.OriginS3ServiceUrl} [download] [{bucketName}] [{imageKey}]");
+            GetObjectResponse response = await s3Client.GetObjectAsync(request);
+
+            return Results.File(response.ResponseStream, contentType);
+        });
+
         app.MapGet("/v1/static/{*filePath}",
             [Authorize(Policy = "ApiKey")]
             async (string filePath) => 
         {
+            Log.Debug($"static: {filePath}");
+
             string fileName = Path.GetFileName(filePath);
             string contentType = "application/octect-stream";
 

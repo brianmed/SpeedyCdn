@@ -8,6 +8,7 @@ ConfigCtx.ParseOptions(args);
 DirectoriesCtx.Provision();
 LoggingCtx.Initialize();
 
+Console.WriteLine($"Initializing App Log: Console and {Path.Combine(ConfigCtx.Options.LogDirectory, $"{nameof(SpeedyCdn)}-App.txt")}");
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Debug()
     .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning) 
@@ -46,6 +47,9 @@ if (ConfigCtx.HasOriginServer) {
     Log.Information($"Origin SourceDirectory: {ConfigCtx.Options.OriginSourceDirectory}");
     Log.Information($"Origin SourceImagesDirectory: {ConfigCtx.Options.OriginSourceImagesDirectory}");
     Log.Information($"Origin SourceStaticDirectory: {ConfigCtx.Options.OriginSourceStaticDirectory}");
+    if (String.IsNullOrWhiteSpace(ConfigCtx.Options.OriginS3ServiceUrl) is false) {
+        Log.Information($"Origin S3 Service URL: {ConfigCtx.Options.OriginS3ServiceUrl}");
+    }
     // 
 }
 if (ConfigCtx.HasEdgeServer is false && ConfigCtx.HasOriginServer is false) {
@@ -94,6 +98,8 @@ while (SpeedyCdn.Server.WebApp.WebAppsInitialized.CurrentCount != totalApps)
 
     sw.SpinOnce();
 }
+
+Log.Information("Switching to File Only Logging");
 
 ((ReloadableLogger)Log.Logger).Reload((loggerConfiguration) =>
 {

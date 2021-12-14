@@ -15,7 +15,7 @@ using SpeedyCdn.Enums;
 
 public interface IImageOperationService
 {
-    Task RunAllFromQueryAsync(string originalCachePath, QueryString queryString, string imageOpCachePath, string imagePath);
+    Task RunAllFromQueryAsync(string originalCachePath, QueryString queryString, string imageOpCachePath, string imagePath, string hackCacheDirectory);
 }
 
 public class ImageOperationService : IImageOperationService
@@ -29,7 +29,7 @@ public class ImageOperationService : IImageOperationService
         QueryStringService = queryStringService;
     }
 
-    async public Task RunAllFromQueryAsync(string _originalCachePath, QueryString queryString, string _imageOpCachePath, string imagePath)
+    async public Task RunAllFromQueryAsync(string _originalCachePath, QueryString queryString, string _imageOpCachePath, string imagePath, string hackCacheDirectory)
     {
         using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"{nameof(ImageOperationService)}.{nameof(RunAllFromQueryAsync)}");
 
@@ -40,8 +40,8 @@ public class ImageOperationService : IImageOperationService
             sw.SpinOnce();
         }
 
-        string originalCachePath = Path.Combine(ConfigCtx.Options.EdgeCacheImagesDirectory, _originalCachePath);
-        string imageOpCachePath = Path.Combine(ConfigCtx.Options.EdgeCacheImagesDirectory, _imageOpCachePath);
+        string originalCachePath = Path.Combine(hackCacheDirectory, _originalCachePath);
+        string imageOpCachePath = Path.Combine(hackCacheDirectory, _imageOpCachePath);
 
         Directory.CreateDirectory(Path.GetDirectoryName(imageOpCachePath));
 
