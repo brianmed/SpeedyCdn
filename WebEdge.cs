@@ -10,6 +10,10 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpLogging;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Abstractions;
+using Microsoft.AspNetCore.Mvc.Routing;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Routing.Template;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
@@ -25,10 +29,6 @@ using SpeedyCdn.Dto;
 
 partial class WebApp
 {
-    // public static SemaphoreSlim CreateOneUseMutex = new SemaphoreSlim(1, 1);
-
-    public static Dictionary<string, HashSet<long>> OneUseNumbers = new();
-
     async static public Task RunEdgeAsync(string[] args)
     {
         WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -71,6 +71,8 @@ partial class WebApp
         builder.Services.AddHttpClient();
 
         builder.Services.AddHttpContextAccessor();
+
+        builder.Services.AddControllers();
 
         builder.Services.AddTransient<IDbUpEdgeService, DbUpEdgeService>();
         builder.Services.AddScoped<IBarcodeService, BarcodeService>();
@@ -135,6 +137,8 @@ partial class WebApp
             string bucketName, string imageKey) => 
         {
             using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", "Edge::v1/s3/images");
+
+            Log.Debug($"s3: {bucketName} {imageKey}");
 
             QueryString queryString = queryStringService.CreateExcept(httpRequest.QueryString, "signature");
 
@@ -285,7 +289,11 @@ partial class WebApp
         app.MapGet("/v1/display/{*display}", async (
             [FromServices]IHmacService hmacService,
             [FromServices]IQueryStringService queryStringService,
-            [FromServices]IHttpClientFactory HttpClientFactory,
+            [FromServices]IHttpClientFactory httpClientFactory,
+            [FromServices]IHttpContextFactory httpContextFactory,
+            [FromServices]IServiceProvider serviceProvider,
+            [FromServices]IEnumerable<EndpointDataSource> endpoints,
+            HttpContext httpContext,
             HttpRequest httpRequest,
             string display
             ) => 
@@ -300,7 +308,7 @@ partial class WebApp
 
             string displayGet = $"{ConfigCtx.Options.EdgeOriginUrl}/v1/display/{display}";
 
-            HttpClient httpClient = HttpClientFactory.CreateClient();
+            HttpClient httpClient = httpClientFactory.CreateClient();
             DisplayUrlDto displayUrlDto = null;
 
             if (ConfigCtx.Options.EdgeOriginApiKey is not null) {
@@ -310,29 +318,65 @@ partial class WebApp
 
             using (HttpResponseMessage response = await httpClient.GetAsync(displayGet))
             {
-                Log.Debug($"Redirect: {await response.Content.ReadAsStringAsync()}");
-
-                JsonSerializerOptions options = new()
-                {
-                    PropertyNameCaseInsensitive = true
-                };
+                Log.Debug($"GET DisplayUrl: {await response.Content.ReadAsStringAsync()}");
                                 
-                displayUrlDto = JsonSerializer.Deserialize<DisplayUrlDto>(await response.Content.ReadAsStringAsync(), options);
+                displayUrlDto = JsonSerializer.Deserialize<DisplayUrlDto>(await response.Content.ReadAsStringAsync());
             }
 
             if (displayUrlDto is null) {
                 return Results.BadRequest();
+            } else if (displayUrlDto.RedirectPath is null && displayUrlDto.QueryString is null) {
+                return Results.StatusCode(404);
             } else {
-                Log.Debug($"Redirect: {displayUrlDto.RedirectPath}{displayUrlDto.QueryString}");
+                Log.Debug($"Internal Redirect: {displayUrlDto.RedirectPath}{displayUrlDto.QueryString}");
 
-                return Results.Redirect($"{displayUrlDto.RedirectPath}{displayUrlDto.QueryString}");
+                var joyEndpoints = endpoints
+                    .SelectMany(es => es.Endpoints)
+                    .OfType<RouteEndpoint>();
+
+                RouteValueDictionary routeValues = new();
+
+                RouteEndpoint matchedEndpoint = joyEndpoints.Where(e => new TemplateMatcher(
+                            TemplateParser.Parse(e.RoutePattern.RawText),
+                            new RouteValueDictionary())
+                        .TryMatch(displayUrlDto.RedirectPath, routeValues))
+                    .OrderBy(c => c.Order)
+                    .FirstOrDefault();
+
+                if (matchedEndpoint is not null) {
+                    using (IServiceScope requestServices = serviceProvider.CreateScope())
+                    {
+                        HttpContext context = new DefaultHttpContext { RequestServices = requestServices.ServiceProvider };
+                        
+                        context.Request.Method = "GET";
+                        context.Request.Path = displayUrlDto.RedirectPath;
+                        context.Request.QueryString = new QueryString(displayUrlDto.QueryString);
+                        context.Request.RouteValues = routeValues;
+
+                        String tempFilePath = Path.GetTempFileName();
+
+                        using (StreamWriter sw = new(tempFilePath))
+                        {
+                            context.Response.Body = sw.BaseStream;
+
+                            await matchedEndpoint.RequestDelegate(context);
+                        }
+
+                        return Results.Stream(new StreamReader(tempFilePath).BaseStream, context.Response.ContentType);
+                    }
+                } else {
+                    return Results.StatusCode(404);
+                }
             }
         });
 
         app.MapGet("/v1/uuid/{uuidUrl}", async (
             [FromServices]IHmacService hmacService,
             [FromServices]IQueryStringService queryStringService,
-            [FromServices]IHttpClientFactory HttpClientFactory,
+            [FromServices]IHttpClientFactory httpClientFactory,
+            [FromServices]IHttpContextFactory httpContextFactory,
+            [FromServices]IServiceProvider serviceProvider,
+            [FromServices]IEnumerable<EndpointDataSource> endpoints,
             HttpRequest httpRequest,
             string uuidUrl) => 
         {
@@ -346,7 +390,7 @@ partial class WebApp
 
             string uuidGet = $"{ConfigCtx.Options.EdgeOriginUrl}/v1/uuid/{uuidUrl}";
 
-            HttpClient httpClient = HttpClientFactory.CreateClient();
+            HttpClient httpClient = httpClientFactory.CreateClient();
             UuidUrlDto uuidUrlDto = null;
 
             if (ConfigCtx.Options.EdgeOriginApiKey is not null) {
@@ -356,21 +400,55 @@ partial class WebApp
 
             using (HttpResponseMessage response = await httpClient.GetAsync(uuidGet))
             {
-                Log.Debug($"Redirect: {await response.Content.ReadAsStringAsync()}");
-
-                JsonSerializerOptions options = new()
-                {
-                    PropertyNameCaseInsensitive = true
-                };
+                Log.Debug($"GET UuidUrl: {await response.Content.ReadAsStringAsync()}");
                                 
-                uuidUrlDto = JsonSerializer.Deserialize<UuidUrlDto>(await response.Content.ReadAsStringAsync(), options);
+                uuidUrlDto = JsonSerializer.Deserialize<UuidUrlDto>(await response.Content.ReadAsStringAsync());
             }
 
             if (uuidUrlDto is null) {
                 return Results.BadRequest();
+            } else if (uuidUrlDto.RedirectPath is null && uuidUrlDto.QueryString is null) {
+                return Results.StatusCode(404);
             } else {
-                Log.Debug($"Redirect: {uuidUrlDto.RedirectPath}{uuidUrlDto.QueryString}");
-                return Results.Redirect($"{uuidUrlDto.RedirectPath}{uuidUrlDto.QueryString}");
+                Log.Debug($"Internal Redirect: {uuidUrlDto.RedirectPath}{uuidUrlDto.QueryString}");
+
+                var joyEndpoints = endpoints
+                    .SelectMany(es => es.Endpoints)
+                    .OfType<RouteEndpoint>();
+
+                RouteValueDictionary routeValues = new();
+
+                RouteEndpoint matchedEndpoint = joyEndpoints.Where(e => new TemplateMatcher(
+                            TemplateParser.Parse(e.RoutePattern.RawText),
+                            new RouteValueDictionary())
+                        .TryMatch(uuidUrlDto.RedirectPath, routeValues))
+                    .OrderBy(c => c.Order)
+                    .FirstOrDefault();
+
+                if (matchedEndpoint is not null) {
+                    using (IServiceScope requestServices = serviceProvider.CreateScope())
+                    {
+                        HttpContext context = new DefaultHttpContext { RequestServices = requestServices.ServiceProvider };
+                        
+                        context.Request.Method = "GET";
+                        context.Request.Path = uuidUrlDto.RedirectPath;
+                        context.Request.QueryString = new QueryString(uuidUrlDto.QueryString);
+                        context.Request.RouteValues = routeValues;
+
+                        String tempFilePath = Path.GetTempFileName();
+
+                        using (StreamWriter sw = new(tempFilePath))
+                        {
+                            context.Response.Body = sw.BaseStream;
+
+                            await matchedEndpoint.RequestDelegate(context);
+                        }
+
+                        return Results.Stream(new StreamReader(tempFilePath).BaseStream, context.Response.ContentType);
+                    }
+                } else {
+                    return Results.StatusCode(404);
+                }
             }
         });
 

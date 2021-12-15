@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpLogging;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Http.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.StaticFiles;
@@ -100,6 +101,11 @@ partial class WebApp
         builder.Services.AddTransient<IHmacService, HmacService>();
         builder.Services.AddTransient<IQueryStringService, QueryStringService>();
         builder.Services.AddTransient<IDbUpOriginService, DbUpOriginService>();
+
+        builder.Services.Configure<Microsoft.AspNetCore.Http.Json.JsonOptions>(options =>
+        {
+            options.SerializerOptions.PropertyNamingPolicy = null;
+        });
 
         WebApplication app = builder.Build();
 
@@ -285,13 +291,22 @@ partial class WebApp
         {
             using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"Origin::v1/display/display");
 
-            DisplayUrlEntity displayUrlEntity = await webOriginDb.DisplayUrl
-                .Where(v => v.Display == display)
-                .SingleAsync();
+            try
+            {
+                DisplayUrlEntity displayUrlEntity = await webOriginDb.DisplayUrl
+                    .Where(v => v.Display == display)
+                    .SingleAsync();
 
-            webOriginDb.Remove(displayUrlEntity);
+                webOriginDb.Remove(displayUrlEntity);
 
-            await webOriginDb.SaveChangesAsync();
+                await webOriginDb.SaveChangesAsync();
+            }
+            catch
+            {
+                return Results.StatusCode(404);
+            }
+
+            return Results.Ok();
         });
 
         app.MapGet("/v1/display/{*display}",
@@ -405,13 +420,22 @@ partial class WebApp
         {
             using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"Origin::v1/uuid/uuid");
 
-            UuidUrlEntity uuidUrlEntity = await webOriginDb.UuidUrl
-                .Where(v => v.Uuid == uuid)
-                .SingleAsync();
+            try
+            {
+                UuidUrlEntity uuidUrlEntity = await webOriginDb.UuidUrl
+                    .Where(v => v.Uuid == uuid)
+                    .SingleAsync();
 
-            webOriginDb.Remove(uuidUrlEntity);
+                webOriginDb.Remove(uuidUrlEntity);
 
-            await webOriginDb.SaveChangesAsync();
+                await webOriginDb.SaveChangesAsync();
+            }
+            catch
+            {
+                return Results.StatusCode(404);
+            }
+
+            return Results.Ok();
         });
 
         app.MapGet("/v1/uuid/{*uuidUrl}",

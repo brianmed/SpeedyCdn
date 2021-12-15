@@ -52,7 +52,7 @@ public class HmacService : IHmacService
             is false;
 
         if (haveCliSignatureKey) {
-            Log.Debug($"Signature IsValid: {filePath}{withoutSignature}");
+            Log.Debug($"Signature IsValid: {filePath}{withoutSignature} {signature}");
 
             if (IsValid(ConfigCtx.Options.EdgeOriginSignatureKey, $"{filePath}{withoutSignature}", signature) is false) {
                 Log.Debug($"Signature Mismatch");
