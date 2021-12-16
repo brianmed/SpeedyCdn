@@ -29,14 +29,13 @@ using SpeedyCdn.Server.Entities.Origin;
 using Amazon.S3;
 using Amazon.S3.Model;
 using BrianMed.AspNetCore.SerilogW3cMiddleware;
+using MassTransit;
 using Serilog.Events;
 
 using SpeedyCdn.Dto;
 
 partial class WebApp
 {
-    public static SemaphoreSlim OneUuidUrlAtAtime = new SemaphoreSlim(1, 1);
-
     async static public Task RunOriginAsync(string[] args)
     {
         WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -481,36 +480,7 @@ partial class WebApp
 
             Log.Debug($"uuid: {redirectPath}");
 
-            int uuidSeed = 0;
-
-            await OneUuidUrlAtAtime.WaitAsync();
-
-            try
-            {
-                if (DateTime.UtcNow.Year >= 2020) {
-                    uuidSeed = (int)((DateTime.UtcNow - new DateTime(2020, 1, 1, 0, 0, 0)).TotalMilliseconds / 100L);		
-
-                    await Task.Delay(10);
-                } else {
-                    uuidSeed = (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-
-                    await Task.Delay(1_000);
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, $"Issue Generating Uuid {redirectPath}");
-            }
-            finally
-            {
-                OneUuidUrlAtAtime.Release();
-            }
-                
-            Random r = new Random(uuidSeed);
-            byte[] guid = new byte[16];
-            r.NextBytes(guid);
-
-            string uuid = new Guid(guid).ToString();
+            string uuid = NewId.Next().ToString();
 
             string key = (await webOriginDb.App
                 .SingleAsync())
