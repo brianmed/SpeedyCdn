@@ -72,8 +72,6 @@ partial class WebApp
 
         builder.Services.AddHttpContextAccessor();
 
-        builder.Services.AddControllers();
-
         builder.Services.AddTransient<IDbUpEdgeService, DbUpEdgeService>();
         builder.Services.AddScoped<IBarcodeService, BarcodeService>();
         builder.Services.AddScoped<ICacheElementService, CacheElementService>();
