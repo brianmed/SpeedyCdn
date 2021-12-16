@@ -16,6 +16,7 @@
   <ItemGroup>
     <PackageReference Include="AWSSDK.S3" Version="3.7.7.2" />
     <PackageReference Include="BrianMed.AspNetCore.SerilogW3cMiddleware" Version="0.1.1" />
+    <PackageReference Include="BrianMed.SmartCrop" Version="0.0.1" />
     <PackageReference Include="CommandLineParser" Version="2.8.0" />
     <PackageReference Include="dbup-core" Version="4.5.0" />
     <PackageReference Include="dbup-sqlite" Version="4.5.0" />

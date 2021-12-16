@@ -74,6 +74,7 @@ public class ImageOperationService : IImageOperationService
             opRequiredParameters.Add("replacecolor", new());
             opRequiredParameters.Add("resize", new());
             opRequiredParameters.Add("rotate", new());
+            opRequiredParameters.Add("smartcrop", new());
 
             opRequiredParameters["border"].Add("border.Color");
             opRequiredParameters["border"].Add("border.Thickness");
@@ -85,6 +86,7 @@ public class ImageOperationService : IImageOperationService
             opRequiredParameters["replacecolor"].Add("replaceColor.NewColor");
             opRequiredParameters["resize"].Add("resize.WH");
             opRequiredParameters["rotate"].Add("rotate.Mode");
+            opRequiredParameters["smartcrop"].Add("smartcrop.WH");
 
             List<(string Name, List<string> Args)> args = QueryStringService.Args(queryString, opRequiredParameters);
 
@@ -133,6 +135,9 @@ public class ImageOperationService : IImageOperationService
 
             case "rotate":
                 return new RotateImageOperation();
+
+            case "smartcrop":
+                return new SmartCropImageOperation();
 
             default:
                 throw new ArgumentException($"Unsupported {operation}");
