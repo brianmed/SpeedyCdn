@@ -40,60 +40,70 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
 
             WebEdgeDbContext webEdgeDb = scope.ServiceProvider.GetRequiredService<WebEdgeDbContext>();
 
-            // TODO: so much code.  Is there a better way
+            // TODO: so much code.  Is there a better way.. and will need to also proccess expired elements
+            long utcNowSubFiveMinutesUnixEpoch = DateTimeOffset.UtcNow.AddMinutes(-5).ToUnixTimeSeconds();
 
             try
             {
-                Log.Debug("Processing ImageCache");
                 long cacheSizeInBytes = await webEdgeDb.ImageCacheElements
                     .Select(v => v.FileSizeBytes)
                     .SumAsync();
 
                 if (cacheSizeInBytes <= ConfigCtx.Options.EdgeCacheInBytes) {
-                    Log.Debug($"Current cacheSizeInBytes: {cacheSizeInBytes} <= {ConfigCtx.Options.EdgeCacheInBytes}.. skipping");
+                    Log.Debug($"ImageCache cacheSizeInBytes: {cacheSizeInBytes} <= {ConfigCtx.Options.EdgeCacheInBytes}.. skipping");
                 } else {
-                    Log.Debug($"Current cacheSizeInBytes: {cacheSizeInBytes} > {ConfigCtx.Options.EdgeCacheInBytes}.. processing");
-
-                    long minId = await webEdgeDb.ImageCacheElements
+                    long minId = (await webEdgeDb.ImageCacheElements
+                        .Where(v => v.LastAccessedUtc < utcNowSubFiveMinutesUnixEpoch)
                         .OrderBy(v => v.LastAccessedUtc)
                         .Select(v => v.ImageCacheElementId)
-                        .MinAsync();
+                        .ToListAsync())
+                        .DefaultIfEmpty(0)
+                        .Min();
 
-                    long maxId = await webEdgeDb.ImageCacheElements
+                    long maxId = (await webEdgeDb.ImageCacheElements
+                        .Where(v => v.LastAccessedUtc < utcNowSubFiveMinutesUnixEpoch)
                         .OrderBy(v => v.LastAccessedUtc)
                         .Select(v => v.ImageCacheElementId)
-                        .MaxAsync();
+                        .ToListAsync())
+                        .DefaultIfEmpty(0)
+                        .Max();
 
-                    long bytesLeft = cacheSizeInBytes - ConfigCtx.Options.EdgeCacheInBytes;
+                    long bytesLeft = minId > 0 && maxId > 0 ? cacheSizeInBytes - ConfigCtx.Options.EdgeCacheInBytes : 0;
+
+                    if (minId > 0 && maxId > 0) {
+                        Log.Debug($"ImageCache cacheSizeInBytes: {cacheSizeInBytes} > {ConfigCtx.Options.EdgeCacheInBytes}.. processing");
+                    } else {
+                        Log.Debug($"ImageCache cacheSizeInBytes: {cacheSizeInBytes} > {ConfigCtx.Options.EdgeCacheInBytes}.. nothing to process yet");
+
+                        bytesLeft = 0;
+                    }
 
                     for (long currentId = minId; currentId <= maxId && bytesLeft > 0; currentId = Math.Min(currentId + 30, maxId + 1))
                     {
                         Log.Debug($"Processing ImageCache: {currentId} .. {Math.Min(currentId + 30, maxId)}");
 
                         List<ImageCacheElementEntity> forDelete = new();
+                        List<ImageCacheElementEntity> forProcessing = await webEdgeDb.ImageCacheElements
+                            .Where(v => v.ImageCacheElementId >= currentId)
+                            .Where(v => v.ImageCacheElementId <= Math.Min(currentId + 30, maxId))
+                            .Where(v => v.LastAccessedUtc < utcNowSubFiveMinutesUnixEpoch)
+                            .ToListAsync();
 
-                        // TODO: the int <--> long conversion is a problem for another day
-                        foreach (int id in Enumerable.Range((int)currentId, 30))
+                        foreach (ImageCacheElementEntity imageCacheElementEntity in forProcessing)
                         {
                             if (bytesLeft <= 0) {
                                 break;
                             }
 
-                            ImageCacheElementEntity imageCacheElementEntity = await webEdgeDb.ImageCacheElements
-                                .Where(v => v.ImageCacheElementId == id)
-                                .SingleOrDefaultAsync();
+                            string filePath = Path.Combine(ConfigCtx.Options.EdgeCacheImagesDirectory, imageCacheElementEntity.CachePath);
 
-                            if (imageCacheElementEntity is not null) {
-                                string filePath = Path.Combine(ConfigCtx.Options.EdgeCacheImagesDirectory, imageCacheElementEntity.CachePath);
-
-                                if (File.Exists(filePath)) {
-                                    File.Delete(filePath);
-                                }
-
-                                bytesLeft -= imageCacheElementEntity.FileSizeBytes;
-
-                                forDelete.Add(imageCacheElementEntity);
+                            if (File.Exists(filePath)) {
+                                File.Delete(filePath);
                             }
+
+                            bytesLeft -= imageCacheElementEntity.FileSizeBytes;
+
+                            forDelete.Add(imageCacheElementEntity);
                         }
 
                         Log.Debug($"Deleting {forDelete.Count} Elements from ImageCache");
@@ -104,7 +114,7 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
                         await webEdgeDb.SaveChangesAsync();
 
                         if (currentId != maxId) {
-                            await Task.Delay(300);
+                            await Task.Delay(10);
                         }
                     }
                 }
@@ -116,56 +126,65 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
 
             try
             {
-                Log.Debug("Processing BarcodeCache");
                 long cacheSizeInBytes = await webEdgeDb.BarcodeCacheElements
                     .Select(v => v.FileSizeBytes)
                     .SumAsync();
 
                 if (cacheSizeInBytes <= ConfigCtx.Options.EdgeCacheInBytes) {
-                    Log.Debug($"Current cacheSizeInBytes: {cacheSizeInBytes} <= {ConfigCtx.Options.EdgeCacheInBytes}.. skipping");
+                    Log.Debug($"BarcodeCache cacheSizeInBytes: {cacheSizeInBytes} <= {ConfigCtx.Options.EdgeCacheInBytes}.. skipping");
                 } else {
-                    Log.Debug($"Current cacheSizeInBytes: {cacheSizeInBytes} > {ConfigCtx.Options.EdgeCacheInBytes}.. processing");
-
-                    long minId = await webEdgeDb.BarcodeCacheElements
+                    long minId = (await webEdgeDb.BarcodeCacheElements
+                        .Where(v => v.LastAccessedUtc < utcNowSubFiveMinutesUnixEpoch)
                         .OrderBy(v => v.LastAccessedUtc)
                         .Select(v => v.BarcodeCacheElementId)
-                        .MinAsync();
+                        .ToListAsync())
+                        .DefaultIfEmpty(0)
+                        .Min();
 
-                    long maxId = await webEdgeDb.BarcodeCacheElements
+                    long maxId = (await webEdgeDb.BarcodeCacheElements
+                        .Where(v => v.LastAccessedUtc < utcNowSubFiveMinutesUnixEpoch)
                         .OrderBy(v => v.LastAccessedUtc)
                         .Select(v => v.BarcodeCacheElementId)
-                        .MaxAsync();
+                        .ToListAsync())
+                        .DefaultIfEmpty(0)
+                        .Max();
 
-                    long bytesLeft = cacheSizeInBytes - ConfigCtx.Options.EdgeCacheInBytes;
+                    long bytesLeft = minId > 0 && maxId > 0 ? cacheSizeInBytes - ConfigCtx.Options.EdgeCacheInBytes : 0;
+
+                    if (minId > 0 && maxId > 0) {
+                        Log.Debug($"BarcodeCache cacheSizeInBytes: {cacheSizeInBytes} > {ConfigCtx.Options.EdgeCacheInBytes}.. processing");
+                    } else {
+                        Log.Debug($"BarcodeCache cacheSizeInBytes: {cacheSizeInBytes} > {ConfigCtx.Options.EdgeCacheInBytes}.. nothing to process yet");
+
+                        bytesLeft = 0;
+                    }
 
                     for (long currentId = minId; currentId <= maxId && bytesLeft > 0; currentId = Math.Min(currentId + 30, maxId + 1))
                     {
                         Log.Debug($"Processing BarcodeCache: {currentId} .. {Math.Min(currentId + 30, maxId)}");
 
                         List<BarcodeCacheElementEntity> forDelete = new();
+                        List<BarcodeCacheElementEntity> forProcessing = await webEdgeDb.BarcodeCacheElements
+                            .Where(v => v.BarcodeCacheElementId >= currentId)
+                            .Where(v => v.BarcodeCacheElementId <= Math.Min(currentId + 30, maxId))
+                            .Where(v => v.LastAccessedUtc < utcNowSubFiveMinutesUnixEpoch)
+                            .ToListAsync();
 
-                        // TODO: the int <--> long conversion is a problem for another day
-                        foreach (int id in Enumerable.Range((int)currentId, 30))
+                        foreach (BarcodeCacheElementEntity barcodeCacheElementEntity in forProcessing)
                         {
                             if (bytesLeft <= 0) {
                                 break;
                             }
 
-                            BarcodeCacheElementEntity barcodeCacheElementEntity = await webEdgeDb.BarcodeCacheElements
-                                .Where(v => v.BarcodeCacheElementId == id)
-                                .SingleOrDefaultAsync();
+                            string filePath = Path.Combine(ConfigCtx.Options.EdgeCacheBarcodesDirectory, barcodeCacheElementEntity.CachePath);
 
-                            if (barcodeCacheElementEntity is not null) {
-                                string filePath = Path.Combine(ConfigCtx.Options.EdgeCacheBarcodesDirectory, barcodeCacheElementEntity.CachePath);
-
-                                if (File.Exists(filePath)) {
-                                    File.Delete(filePath);
-                                }
-
-                                bytesLeft -= barcodeCacheElementEntity.FileSizeBytes;
-
-                                forDelete.Add(barcodeCacheElementEntity);
+                            if (File.Exists(filePath)) {
+                                File.Delete(filePath);
                             }
+
+                            bytesLeft -= barcodeCacheElementEntity.FileSizeBytes;
+
+                            forDelete.Add(barcodeCacheElementEntity);
                         }
 
                         Log.Debug($"Deleting {forDelete.Count} Elements from BarcodeCache");
@@ -176,7 +195,7 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
                         await webEdgeDb.SaveChangesAsync();
 
                         if (currentId != maxId) {
-                            await Task.Delay(300);
+                            await Task.Delay(10);
                         }
                     }
                 }
@@ -188,56 +207,65 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
 
             try
             {
-                Log.Debug("Processing S3ImageCache");
                 long cacheSizeInBytes = await webEdgeDb.S3ImageCacheElements
                     .Select(v => v.FileSizeBytes)
                     .SumAsync();
 
                 if (cacheSizeInBytes <= ConfigCtx.Options.EdgeCacheInBytes) {
-                    Log.Debug($"Current cacheSizeInBytes: {cacheSizeInBytes} <= {ConfigCtx.Options.EdgeCacheInBytes}.. skipping");
+                    Log.Debug($"S3ImageCache cacheSizeInBytes: {cacheSizeInBytes} <= {ConfigCtx.Options.EdgeCacheInBytes}.. skipping");
                 } else {
-                    Log.Debug($"Current cacheSizeInBytes: {cacheSizeInBytes} > {ConfigCtx.Options.EdgeCacheInBytes}.. processing");
-
-                    long minId = await webEdgeDb.S3ImageCacheElements
+                    long minId = (await webEdgeDb.S3ImageCacheElements
+                        .Where(v => v.LastAccessedUtc < utcNowSubFiveMinutesUnixEpoch)
                         .OrderBy(v => v.LastAccessedUtc)
                         .Select(v => v.S3ImageCacheElementId)
-                        .MinAsync();
+                        .ToListAsync())
+                        .DefaultIfEmpty(0)
+                        .Min();
 
-                    long maxId = await webEdgeDb.S3ImageCacheElements
+                    long maxId = (await webEdgeDb.S3ImageCacheElements
+                        .Where(v => v.LastAccessedUtc < utcNowSubFiveMinutesUnixEpoch)
                         .OrderBy(v => v.LastAccessedUtc)
                         .Select(v => v.S3ImageCacheElementId)
-                        .MaxAsync();
+                        .ToListAsync())
+                        .DefaultIfEmpty(0)
+                        .Max();
 
-                    long bytesLeft = cacheSizeInBytes - ConfigCtx.Options.EdgeCacheInBytes;
+                    long bytesLeft = minId > 0 && maxId > 0 ? cacheSizeInBytes - ConfigCtx.Options.EdgeCacheInBytes : 0;
+
+                    if (minId > 0 && maxId > 0) {
+                        Log.Debug($"S3ImageCache cacheSizeInBytes: {cacheSizeInBytes} > {ConfigCtx.Options.EdgeCacheInBytes}.. processing");
+                    } else {
+                        Log.Debug($"S3ImageCache cacheSizeInBytes: {cacheSizeInBytes} > {ConfigCtx.Options.EdgeCacheInBytes}.. nothing to process yet");
+
+                        bytesLeft = 0;
+                    }
 
                     for (long currentId = minId; currentId <= maxId && bytesLeft > 0; currentId = Math.Min(currentId + 30, maxId + 1))
                     {
                         Log.Debug($"Processing S3ImageCache: {currentId} .. {Math.Min(currentId + 30, maxId)}");
 
                         List<S3ImageCacheElementEntity> forDelete = new();
+                        List<S3ImageCacheElementEntity> forProcessing = await webEdgeDb.S3ImageCacheElements
+                            .Where(v => v.S3ImageCacheElementId >= currentId)
+                            .Where(v => v.S3ImageCacheElementId <= Math.Min(currentId + 30, maxId))
+                            .Where(v => v.LastAccessedUtc < utcNowSubFiveMinutesUnixEpoch)
+                            .ToListAsync();
 
-                        // TODO: the int <--> long conversion is a problem for another day
-                        foreach (int id in Enumerable.Range((int)currentId, 30))
+                        foreach (S3ImageCacheElementEntity s3ImageCacheElementEntity in forProcessing)
                         {
                             if (bytesLeft <= 0) {
                                 break;
                             }
 
-                            S3ImageCacheElementEntity s3ImageCacheElementEntity = await webEdgeDb.S3ImageCacheElements
-                                .Where(v => v.S3ImageCacheElementId == id)
-                                .SingleOrDefaultAsync();
+                            string filePath = Path.Combine(ConfigCtx.Options.EdgeCacheS3ImagesDirectory, s3ImageCacheElementEntity.CachePath);
 
-                            if (s3ImageCacheElementEntity is not null) {
-                                string filePath = Path.Combine(ConfigCtx.Options.EdgeCacheS3ImagesDirectory, s3ImageCacheElementEntity.CachePath);
-
-                                if (File.Exists(filePath)) {
-                                    File.Delete(filePath);
-                                }
-
-                                bytesLeft -= s3ImageCacheElementEntity.FileSizeBytes;
-
-                                forDelete.Add(s3ImageCacheElementEntity);
+                            if (File.Exists(filePath)) {
+                                File.Delete(filePath);
                             }
+
+                            bytesLeft -= s3ImageCacheElementEntity.FileSizeBytes;
+
+                            forDelete.Add(s3ImageCacheElementEntity);
                         }
 
                         Log.Debug($"Deleting {forDelete.Count} Elements from S3ImageCache");
@@ -248,7 +276,7 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
                         await webEdgeDb.SaveChangesAsync();
 
                         if (currentId != maxId) {
-                            await Task.Delay(300);
+                            await Task.Delay(10);
                         }
                     }
                 }
@@ -260,56 +288,65 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
 
             try
             {
-                Log.Debug("Processing StaticCache");
                 long cacheSizeInBytes = await webEdgeDb.StaticCacheElements
                     .Select(v => v.FileSizeBytes)
                     .SumAsync();
 
                 if (cacheSizeInBytes <= ConfigCtx.Options.EdgeCacheInBytes) {
-                    Log.Debug($"Current cacheSizeInBytes: {cacheSizeInBytes} <= {ConfigCtx.Options.EdgeCacheInBytes}.. skipping");
+                    Log.Debug($"StaticCache cacheSizeInBytes: {cacheSizeInBytes} <= {ConfigCtx.Options.EdgeCacheInBytes}.. skipping");
                 } else {
-                    Log.Debug($"Current cacheSizeInBytes: {cacheSizeInBytes} > {ConfigCtx.Options.EdgeCacheInBytes}.. processing");
-
-                    long minId = await webEdgeDb.StaticCacheElements
+                    long minId = (await webEdgeDb.StaticCacheElements
+                        .Where(v => v.LastAccessedUtc < utcNowSubFiveMinutesUnixEpoch)
                         .OrderBy(v => v.LastAccessedUtc)
                         .Select(v => v.StaticCacheElementId)
-                        .MinAsync();
+                        .ToListAsync())
+                        .DefaultIfEmpty(0)
+                        .Min();
 
-                    long maxId = await webEdgeDb.StaticCacheElements
+                    long maxId = (await webEdgeDb.StaticCacheElements
+                        .Where(v => v.LastAccessedUtc < utcNowSubFiveMinutesUnixEpoch)
                         .OrderBy(v => v.LastAccessedUtc)
                         .Select(v => v.StaticCacheElementId)
-                        .MaxAsync();
+                        .ToListAsync())
+                        .DefaultIfEmpty(0)
+                        .Max();
 
-                    long bytesLeft = cacheSizeInBytes - ConfigCtx.Options.EdgeCacheInBytes;
+                    long bytesLeft = minId > 0 && maxId > 0 ? cacheSizeInBytes - ConfigCtx.Options.EdgeCacheInBytes : 0;
+
+                    if (minId > 0 && maxId > 0) {
+                        Log.Debug($"StaticCache cacheSizeInBytes: {cacheSizeInBytes} > {ConfigCtx.Options.EdgeCacheInBytes}.. processing");
+                    } else {
+                        Log.Debug($"StaticCache cacheSizeInBytes: {cacheSizeInBytes} > {ConfigCtx.Options.EdgeCacheInBytes}.. nothing to process yet");
+
+                        bytesLeft = 0;
+                    }
 
                     for (long currentId = minId; currentId <= maxId && bytesLeft > 0; currentId = Math.Min(currentId + 30, maxId + 1))
                     {
                         Log.Debug($"Processing StaticCache: {currentId} .. {Math.Min(currentId + 30, maxId)}");
 
                         List<StaticCacheElementEntity> forDelete = new();
+                        List<StaticCacheElementEntity> forProcessing = await webEdgeDb.StaticCacheElements
+                            .Where(v => v.StaticCacheElementId >= currentId)
+                            .Where(v => v.StaticCacheElementId <= Math.Min(currentId + 30, maxId))
+                            .Where(v => v.LastAccessedUtc < utcNowSubFiveMinutesUnixEpoch)
+                            .ToListAsync();
 
-                        // TODO: the int <--> long conversion is a problem for another day
-                        foreach (int id in Enumerable.Range((int)currentId, 30))
+                        foreach (StaticCacheElementEntity staticCacheElementEntity in forProcessing)
                         {
                             if (bytesLeft <= 0) {
                                 break;
                             }
 
-                            StaticCacheElementEntity staticCacheElementEntity = await webEdgeDb.StaticCacheElements
-                                .Where(v => v.StaticCacheElementId == id)
-                                .SingleOrDefaultAsync();
+                            string filePath = Path.Combine(ConfigCtx.Options.EdgeCacheStaticDirectory, staticCacheElementEntity.CachePath);
 
-                            if (staticCacheElementEntity is not null) {
-                                string filePath = Path.Combine(ConfigCtx.Options.EdgeCacheStaticDirectory, staticCacheElementEntity.CachePath);
-
-                                if (File.Exists(filePath)) {
-                                    File.Delete(filePath);
-                                }
-
-                                bytesLeft -= staticCacheElementEntity.FileSizeBytes;
-
-                                forDelete.Add(staticCacheElementEntity);
+                            if (File.Exists(filePath)) {
+                                File.Delete(filePath);
                             }
+
+                            bytesLeft -= staticCacheElementEntity.FileSizeBytes;
+
+                            forDelete.Add(staticCacheElementEntity);
                         }
 
                         Log.Debug($"Deleting {forDelete.Count} Elements from StaticCache");
@@ -320,7 +357,7 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
                         await webEdgeDb.SaveChangesAsync();
 
                         if (currentId != maxId) {
-                            await Task.Delay(300);
+                            await Task.Delay(10);
                         }
                     }
                 }

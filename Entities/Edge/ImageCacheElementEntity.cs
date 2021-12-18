@@ -8,21 +8,23 @@ using Microsoft.EntityFrameworkCore;
 
 namespace SpeedyCdn.Server.Entities.Edge
 {
+    [Index(nameof(ExpireUtc))]
     [Index(nameof(LastAccessedUtc))]
-    [Index(nameof(CachePath), IsUnique = true)]
     public class ImageCacheElementEntity
     {
         [Key]
         public long ImageCacheElementId { get; set; }
 
-        [Required]
         public string CachePath { get; set; }
 
+        [Required]
+        public long FileSizeBytes { get; set; }
+
+        [Required]
         public long LastAccessedUtc { get; set; }
 
+        [Required]
         public long ExpireUtc { get; set; }
-
-        public long FileSizeBytes { get; set; }
 
         [DefaultValue(typeof(DateTime), "")]        
         public DateTime Updated { get; set; }

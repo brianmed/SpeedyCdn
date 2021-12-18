@@ -155,18 +155,15 @@ partial class WebApp
             }
 
             string cacheImagePathJson = JsonSerializer.Serialize(new[] { $"{bucketName}/{imageKey}" });
-            string cacheImagePath = cachePathService.RelativeWithBucket(cacheImagePathJson, fileName);
-            await download.GetS3ImageAsync(bucketName, imageKey, cacheImagePath);
+            string cacheImagePath = cachePathService.RelativeWithBucket(cacheImagePathJson);
+            S3ImageCacheElementEntity s3ImageCacheOriginalElement = await download.GetS3ImageAsync(bucketName, imageKey, cacheImagePath);
 
             string cacheImagePathAndQueryStringJson = JsonSerializer.Serialize(new[] { $"{bucketName}/{imageKey}", queryString.ToString() });
-            string cacheImagePathAndQueryString = cachePathService.RelativeWithBucket(cacheImagePathAndQueryStringJson, fileName);
-            await imageOperation.RunAllFromQueryAsync(cacheImagePath, queryString, cacheImagePathAndQueryString, $"{bucketName}/{imageKey}", AppCtx.ConfigCtx.Options.EdgeCacheS3ImagesDirectory);
-            
-            S3ImageCacheElementEntity s3ImageCacheElementEntity = await cacheElementService
-                .UpsertS3ImageAsync(cacheImagePath, cacheImagePathAndQueryString);
+            string cacheImagePathAndQueryString = cachePathService.RelativeWithBucket(cacheImagePathAndQueryStringJson);
+            S3ImageCacheElementEntity s3ImageCacheModifiedElement = await imageOperation.S3ImageFromQueryAsync(cacheImagePath, queryString, cacheImagePathAndQueryString, $"{bucketName}/{imageKey}");
 
-            Log.Debug($"Sending: {s3ImageCacheElementEntity.S3ImageCacheElementId} - {fileName} as {contentType}");
-            return Results.File(Path.Combine(ConfigCtx.Options.EdgeCacheS3ImagesDirectory, cacheImagePathAndQueryString), contentType);
+            Log.Debug($"Sending: {s3ImageCacheModifiedElement.S3ImageCacheElementId} - {fileName} as {contentType}");
+            return Results.File(s3ImageCacheModifiedElement.CachePath, contentType);
         });
 
         app.MapGet("/v1/images/{*imagePath}", async (
@@ -181,6 +178,8 @@ partial class WebApp
             string imagePath) => 
         {
             using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", "Edge::v1/images");
+
+            Log.Debug($"Starting");
 
             QueryString queryString = queryStringService.CreateExcept(httpRequest.QueryString, "signature");
 
@@ -199,20 +198,18 @@ partial class WebApp
             }
 
             string cacheImagePathJson = JsonSerializer.Serialize(new[] { imagePath });
-            string cacheImagePath = cachePathService.RelativeWithBucket(cacheImagePathJson, fileName);
-            await download.GetImageAsync(imagePath, cacheImagePath);
+            string cacheImagePath = cachePathService.RelativeWithBucket(cacheImagePathJson);
+
+            ImageCacheElementEntity imageCacheElement = await download.GetImageAsync(imagePath, cacheImagePath);
 
             string cacheImagePathAndQueryStringJson = JsonSerializer.Serialize(new[] { imagePath, queryString.ToString() });
-            string cacheImagePathAndQueryString = cachePathService.RelativeWithBucket(cacheImagePathAndQueryStringJson, fileName);
-            await imageOperation.RunAllFromQueryAsync(cacheImagePath, queryString, cacheImagePathAndQueryString, imagePath, AppCtx.ConfigCtx.Options.EdgeCacheImagesDirectory);
-            
-            ImageCacheElementEntity imageCacheElementEntity = await cacheElementService
-                .UpsertImageAsync(cacheImagePath, cacheImagePathAndQueryString);
+            string cacheImagePathAndQueryString = cachePathService.RelativeWithBucket(cacheImagePathAndQueryStringJson);
 
-            // Sending
+            ImageCacheElementEntity imageCacheAndQueryElement =
+                await imageOperation.ImageFromQueryAsync(imageCacheElement.CachePath, queryString, cacheImagePathAndQueryString, imagePath);
 
-            Log.Debug($"Sending: {imageCacheElementEntity.ImageCacheElementId} - {fileName} as {contentType}");
-            return Results.File(Path.Combine(ConfigCtx.Options.EdgeCacheImagesDirectory, cacheImagePathAndQueryString), contentType);
+            Log.Debug($"Sending: {imageCacheElement.CachePath} - {fileName} as {contentType}");
+            return Results.File(imageCacheAndQueryElement.CachePath, contentType);
         });
 
         app.MapGet("/v1/static/{*staticPath}", async (
@@ -242,15 +239,12 @@ partial class WebApp
             }
 
             string cacheStaticPathJson = JsonSerializer.Serialize(new[] { staticPath });
-            string cacheStaticPath = cachePathService.RelativeWithBucket(cacheStaticPathJson, fileName);
-            await download.GetStaticAsync(staticPath, cacheStaticPath);
+            string cacheStaticPath = cachePathService.RelativeWithBucket(cacheStaticPathJson);
+            StaticCacheElementEntity staticCacheElement = await download.GetStaticAsync(staticPath, cacheStaticPath);
 
-            StaticCacheElementEntity staticCacheElementEnitty = await cacheElementService
-                .UpsertStaticAsync(cacheStaticPath);
+            Log.Debug($"Sending: {staticCacheElement.StaticCacheElementId} as {contentType}");
 
-            Log.Debug($"Sending: {staticCacheElementEnitty.StaticCacheElementId} as {contentType}");
-
-            return Results.File(Path.Combine(ConfigCtx.Options.EdgeCacheStaticDirectory, cacheStaticPath), contentType);
+            return Results.File(staticCacheElement.CachePath, contentType);
         });
 
         app.MapGet("/v1/barcode", async (
@@ -271,17 +265,13 @@ partial class WebApp
             }
 
             string cacheBarcodeQueryStringJson = JsonSerializer.Serialize(new[] { queryString.ToString() });
-            string cacheBarcodeQueryString = cachePathService.RelativeWithBucket(cacheBarcodeQueryStringJson, String.Empty);
+            string cacheBarcodeQueryString = cachePathService.RelativeWithBucket(cacheBarcodeQueryStringJson);
 
-            barcodeService.GenerateFromQueryString(cacheBarcodeQueryString, queryString);
-            
-            FileStream barcodeCacheStream = new FileStream(Path.Combine(ConfigCtx.Options.EdgeCacheBarcodesDirectory, cacheBarcodeQueryString), FileMode.Open);
+            BarcodeCacheElementEntity barcodeCacheElement =
+                await barcodeService.GenerateFromQueryString(cacheBarcodeQueryString, queryString);
 
-            BarcodeCacheElementEntity barcodeCacheElementEntity = await cacheElementService
-                .UpsertBarcodeAsync(cacheBarcodeQueryString);
-
-            Log.Debug($"Sending: {barcodeCacheElementEntity.BarcodeCacheElementId} as image/png");
-            return Results.File(barcodeCacheStream, "image/png");
+            Log.Debug($"Sending: {barcodeCacheElement.BarcodeCacheElementId} as image/png");
+            return Results.File(barcodeCacheElement.CachePath, "image/png");
         });
 
         app.MapGet("/v1/display/{*display}", async (

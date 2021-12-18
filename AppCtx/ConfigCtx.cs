@@ -15,8 +15,7 @@ public class Options
     [Option("originUrls", Required = false, HelpText = "Origin Urls Specifying the Addresses to Listen on (eg http://*:8080)")]
     public string? OriginUrls { get; internal set; }
 
-    [Option("originFrontendUri", Required = false, HelpText = "Origin User Facing Uri (eg https://192.168.9.12:8080)")]
-    public Uri OriginFrontendUri { get; internal set; } = new("http://localhost:8080");
+    // 
 
     private string _originSourceDirectory;
     [Option("originSourceDirectory", Required = false, HelpText = "Directory for Source Files")]
