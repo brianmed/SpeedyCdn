@@ -2,7 +2,7 @@ CREATE TABLE IF NOT EXISTS StaticCacheElements
 (
     StaticCacheElementId INTEGER PRIMARY KEY AUTOINCREMENT,
 
-    CachePath TEXT NOT NULL,
+    CachePath TEXT,
 
     FileSizeBytes INTEGER NOT NULL,
 

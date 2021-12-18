@@ -8,14 +8,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace SpeedyCdn.Server.Entities.Edge
 {
+    [Index(nameof(ExpireUtc))]
     [Index(nameof(LastAccessedUtc))]
-    [Index(nameof(CachePath), IsUnique = true)]
     public class StaticCacheElementEntity
     {
         [Key]
         public long StaticCacheElementId { get; set; }
 
-        [Required]
         public string CachePath { get; set; }
 
         public long LastAccessedUtc { get; set; }

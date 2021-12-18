@@ -3,14 +3,14 @@ using System.Text.Json;
 
 public interface ICachePathService
 {
-    string RelativeWithBucket(string translate, string fileName);
+    string RelativeWithBucket(string translate);
 
     string DecodedWithoutBucket(string encoded);
 }
 
 public class CachePathService : ICachePathService
 {
-    public string RelativeWithBucket(string translate, string fileName)
+    public string RelativeWithBucket(string translate)
     {
         List<string> cachePathSegments = new();
 
@@ -23,7 +23,7 @@ public class CachePathService : ICachePathService
             cachePathSegments.Add(segment);
         }
 
-        string cachePathSegment = $"{Path.Combine(cachePathSegments.ToArray())}{Path.GetExtension(fileName)}";
+        string cachePathSegment = $"{Path.Combine(cachePathSegments.ToArray())}";
 
         using MemoryStream stream = new MemoryStream(Encoding.ASCII.GetBytes(cachePathSegment));
         uint cachePathBucket = ((uint)MurMurHash3.Hash(stream)) % 5000;
