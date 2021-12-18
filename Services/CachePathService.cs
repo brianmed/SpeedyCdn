@@ -5,7 +5,7 @@ public interface ICachePathService
 {
     string RelativeWithBucket(string translate);
 
-    string DecodedWithoutBucket(string encoded);
+    // 
 }
 
 public class CachePathService : ICachePathService
@@ -25,23 +25,15 @@ public class CachePathService : ICachePathService
 
         string cachePathSegment = $"{Path.Combine(cachePathSegments.ToArray())}";
 
-        using MemoryStream stream = new MemoryStream(Encoding.ASCII.GetBytes(cachePathSegment));
-        uint cachePathBucket = ((uint)MurMurHash3.Hash(stream)) % 5000;
+        // Need two streams because we got an error with Seek
+        using MemoryStream stream1st = new MemoryStream(Encoding.ASCII.GetBytes(cachePathSegment));
+        uint cachePathBucket1st = ((uint)MurMurHash3.Hash(stream1st)) % 5000;
 
-        return Path.Combine(cachePathBucket.ToString(), cachePathSegment);
+        using MemoryStream stream2nd = new MemoryStream(Encoding.ASCII.GetBytes(cachePathSegment));
+        uint cachePathBucket2nd = ((uint)MurMurHash3.Hash(stream2nd)) % 50;
+
+        return Path.Combine(cachePathBucket1st.ToString(), cachePathBucket2nd.ToString(), cachePathSegment);
     }
 
-    public string DecodedWithoutBucket(string _encoded)
-    {
-        string encoded = Path.ChangeExtension(_encoded, null);
-
-        string decoded = String.Empty;
-
-        foreach (string segment in encoded.Split(Path.DirectorySeparatorChar).Skip(1))
-        {
-            decoded += Encoding.UTF8.GetString(Convert.FromBase64String(segment));
-        }
-
-        return decoded;
-    }
+    // 
 }

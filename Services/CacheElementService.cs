@@ -27,8 +27,7 @@ public class CacheElementService : ICacheElementService
         BarcodeCacheElementEntity barcodeCacheElement = new BarcodeCacheElementEntity
         {
             FileSizeBytes = new FileInfo(cachePath).Length,
-            LastAccessedUtc = lastAccessedutc,
-            ExpireUtc = expireUtc
+            LastAccessedUtc = lastAccessedutc
         };
 
         WebEdgeDb.Add(barcodeCacheElement);
@@ -51,8 +50,7 @@ public class CacheElementService : ICacheElementService
         ImageCacheElementEntity imageCacheElement = new ImageCacheElementEntity
         {
             FileSizeBytes = new FileInfo(imageCachePath).Length,
-            LastAccessedUtc = lastAccessedutc,
-            ExpireUtc = expireUtc
+            LastAccessedUtc = lastAccessedutc
         };
 
         WebEdgeDb.Add(imageCacheElement);
@@ -75,8 +73,7 @@ public class CacheElementService : ICacheElementService
         S3ImageCacheElementEntity s3ImageCacheElement = new S3ImageCacheElementEntity
         {
             FileSizeBytes = new FileInfo(s3ImageCachePath).Length,
-            LastAccessedUtc = lastAccessedutc,
-            ExpireUtc = expireUtc
+            LastAccessedUtc = lastAccessedutc
         };
 
         WebEdgeDb.Add(s3ImageCacheElement);
@@ -99,8 +96,7 @@ public class CacheElementService : ICacheElementService
         StaticCacheElementEntity staticCacheElement = new StaticCacheElementEntity
         {
             FileSizeBytes = new FileInfo(staticCachePath).Length,
-            LastAccessedUtc = lastAccessedutc,
-            ExpireUtc = expireUtc
+            LastAccessedUtc = lastAccessedutc
         };
 
         WebEdgeDb.Add(staticCacheElement);

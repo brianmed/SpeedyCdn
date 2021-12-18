@@ -67,6 +67,9 @@ public class BarcodeService : IBarcodeService
                         .Where(v => v.BarcodeCacheElementId == barcodeCacheElementId)
                         .SingleAsync();
 
+                    cacheElement.LastAccessedUtc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    await WebEdgeDb.SaveChangesAsync();
+
                     return cacheElement;
                 } else {
                     Log.Debug($"Zero Byte Barcode Cache File: {queryString}");

@@ -40,8 +40,8 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
 
             WebEdgeDbContext webEdgeDb = scope.ServiceProvider.GetRequiredService<WebEdgeDbContext>();
 
-            // TODO: so much code.  Is there a better way.. and will need to also proccess expired elements
-            long utcNowSubFiveMinutesUnixEpoch = DateTimeOffset.UtcNow.AddMinutes(-5).ToUnixTimeSeconds();
+            // TODO: so much code.  Is there a better way..
+            long utcNowSubOneDayUnixEpoch = DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeSeconds();
 
             try
             {
@@ -53,7 +53,7 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
                     Log.Debug($"ImageCache cacheSizeInBytes: {cacheSizeInBytes} <= {ConfigCtx.Options.EdgeCacheInBytes}.. skipping");
                 } else {
                     long minId = (await webEdgeDb.ImageCacheElements
-                        .Where(v => v.LastAccessedUtc < utcNowSubFiveMinutesUnixEpoch)
+                        .Where(v => v.LastAccessedUtc < utcNowSubOneDayUnixEpoch)
                         .OrderBy(v => v.LastAccessedUtc)
                         .Select(v => v.ImageCacheElementId)
                         .ToListAsync())
@@ -61,7 +61,7 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
                         .Min();
 
                     long maxId = (await webEdgeDb.ImageCacheElements
-                        .Where(v => v.LastAccessedUtc < utcNowSubFiveMinutesUnixEpoch)
+                        .Where(v => v.LastAccessedUtc < utcNowSubOneDayUnixEpoch)
                         .OrderBy(v => v.LastAccessedUtc)
                         .Select(v => v.ImageCacheElementId)
                         .ToListAsync())
@@ -86,7 +86,7 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
                         List<ImageCacheElementEntity> forProcessing = await webEdgeDb.ImageCacheElements
                             .Where(v => v.ImageCacheElementId >= currentId)
                             .Where(v => v.ImageCacheElementId <= Math.Min(currentId + 30, maxId))
-                            .Where(v => v.LastAccessedUtc < utcNowSubFiveMinutesUnixEpoch)
+                            .Where(v => v.LastAccessedUtc < utcNowSubOneDayUnixEpoch)
                             .ToListAsync();
 
                         foreach (ImageCacheElementEntity imageCacheElementEntity in forProcessing)
@@ -134,7 +134,7 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
                     Log.Debug($"BarcodeCache cacheSizeInBytes: {cacheSizeInBytes} <= {ConfigCtx.Options.EdgeCacheInBytes}.. skipping");
                 } else {
                     long minId = (await webEdgeDb.BarcodeCacheElements
-                        .Where(v => v.LastAccessedUtc < utcNowSubFiveMinutesUnixEpoch)
+                        .Where(v => v.LastAccessedUtc < utcNowSubOneDayUnixEpoch)
                         .OrderBy(v => v.LastAccessedUtc)
                         .Select(v => v.BarcodeCacheElementId)
                         .ToListAsync())
@@ -142,7 +142,7 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
                         .Min();
 
                     long maxId = (await webEdgeDb.BarcodeCacheElements
-                        .Where(v => v.LastAccessedUtc < utcNowSubFiveMinutesUnixEpoch)
+                        .Where(v => v.LastAccessedUtc < utcNowSubOneDayUnixEpoch)
                         .OrderBy(v => v.LastAccessedUtc)
                         .Select(v => v.BarcodeCacheElementId)
                         .ToListAsync())
@@ -167,7 +167,7 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
                         List<BarcodeCacheElementEntity> forProcessing = await webEdgeDb.BarcodeCacheElements
                             .Where(v => v.BarcodeCacheElementId >= currentId)
                             .Where(v => v.BarcodeCacheElementId <= Math.Min(currentId + 30, maxId))
-                            .Where(v => v.LastAccessedUtc < utcNowSubFiveMinutesUnixEpoch)
+                            .Where(v => v.LastAccessedUtc < utcNowSubOneDayUnixEpoch)
                             .ToListAsync();
 
                         foreach (BarcodeCacheElementEntity barcodeCacheElementEntity in forProcessing)
@@ -215,7 +215,7 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
                     Log.Debug($"S3ImageCache cacheSizeInBytes: {cacheSizeInBytes} <= {ConfigCtx.Options.EdgeCacheInBytes}.. skipping");
                 } else {
                     long minId = (await webEdgeDb.S3ImageCacheElements
-                        .Where(v => v.LastAccessedUtc < utcNowSubFiveMinutesUnixEpoch)
+                        .Where(v => v.LastAccessedUtc < utcNowSubOneDayUnixEpoch)
                         .OrderBy(v => v.LastAccessedUtc)
                         .Select(v => v.S3ImageCacheElementId)
                         .ToListAsync())
@@ -223,7 +223,7 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
                         .Min();
 
                     long maxId = (await webEdgeDb.S3ImageCacheElements
-                        .Where(v => v.LastAccessedUtc < utcNowSubFiveMinutesUnixEpoch)
+                        .Where(v => v.LastAccessedUtc < utcNowSubOneDayUnixEpoch)
                         .OrderBy(v => v.LastAccessedUtc)
                         .Select(v => v.S3ImageCacheElementId)
                         .ToListAsync())
@@ -248,7 +248,7 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
                         List<S3ImageCacheElementEntity> forProcessing = await webEdgeDb.S3ImageCacheElements
                             .Where(v => v.S3ImageCacheElementId >= currentId)
                             .Where(v => v.S3ImageCacheElementId <= Math.Min(currentId + 30, maxId))
-                            .Where(v => v.LastAccessedUtc < utcNowSubFiveMinutesUnixEpoch)
+                            .Where(v => v.LastAccessedUtc < utcNowSubOneDayUnixEpoch)
                             .ToListAsync();
 
                         foreach (S3ImageCacheElementEntity s3ImageCacheElementEntity in forProcessing)
@@ -296,7 +296,7 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
                     Log.Debug($"StaticCache cacheSizeInBytes: {cacheSizeInBytes} <= {ConfigCtx.Options.EdgeCacheInBytes}.. skipping");
                 } else {
                     long minId = (await webEdgeDb.StaticCacheElements
-                        .Where(v => v.LastAccessedUtc < utcNowSubFiveMinutesUnixEpoch)
+                        .Where(v => v.LastAccessedUtc < utcNowSubOneDayUnixEpoch)
                         .OrderBy(v => v.LastAccessedUtc)
                         .Select(v => v.StaticCacheElementId)
                         .ToListAsync())
@@ -304,7 +304,7 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
                         .Min();
 
                     long maxId = (await webEdgeDb.StaticCacheElements
-                        .Where(v => v.LastAccessedUtc < utcNowSubFiveMinutesUnixEpoch)
+                        .Where(v => v.LastAccessedUtc < utcNowSubOneDayUnixEpoch)
                         .OrderBy(v => v.LastAccessedUtc)
                         .Select(v => v.StaticCacheElementId)
                         .ToListAsync())
@@ -329,7 +329,7 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
                         List<StaticCacheElementEntity> forProcessing = await webEdgeDb.StaticCacheElements
                             .Where(v => v.StaticCacheElementId >= currentId)
                             .Where(v => v.StaticCacheElementId <= Math.Min(currentId + 30, maxId))
-                            .Where(v => v.LastAccessedUtc < utcNowSubFiveMinutesUnixEpoch)
+                            .Where(v => v.LastAccessedUtc < utcNowSubOneDayUnixEpoch)
                             .ToListAsync();
 
                         foreach (StaticCacheElementEntity staticCacheElementEntity in forProcessing)

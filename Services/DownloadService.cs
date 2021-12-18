@@ -71,6 +71,9 @@ public class DownloadService : IDownloadService
                         .Where(v => v.S3ImageCacheElementId == s3ImageCacheElementId)
                         .SingleAsync();
 
+                    cacheElement.LastAccessedUtc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    await WebEdgeDb.SaveChangesAsync();
+
                     return cacheElement;
                 } else {
                     Log.Debug($"Zero Byte Cache File: {url}");
@@ -132,6 +135,9 @@ public class DownloadService : IDownloadService
                         .Where(v => v.ImageCacheElementId == imageCacheElementId)
                         .SingleAsync();
 
+                    cacheElement.LastAccessedUtc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    await WebEdgeDb.SaveChangesAsync();
+
                     return cacheElement;
                 } else {
                     Log.Debug($"Zero Byte Cache File: {url}");
@@ -192,6 +198,9 @@ public class DownloadService : IDownloadService
                     cacheElement = await WebEdgeDb.StaticCacheElements
                         .Where(v => v.StaticCacheElementId == staticCacheElementId)
                         .SingleAsync();
+
+                    cacheElement.LastAccessedUtc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    await WebEdgeDb.SaveChangesAsync();
 
                     return cacheElement;
                 } else {

@@ -208,7 +208,7 @@ partial class WebApp
             ImageCacheElementEntity imageCacheAndQueryElement =
                 await imageOperation.ImageFromQueryAsync(imageCacheElement.CachePath, queryString, cacheImagePathAndQueryString, imagePath);
 
-            Log.Debug($"Sending: {imageCacheElement.CachePath} - {fileName} as {contentType}");
+            Log.Debug($"Sending: {imageCacheAndQueryElement.CachePath} - {fileName} as {contentType}");
             return Results.File(imageCacheAndQueryElement.CachePath, contentType);
         });
 
@@ -243,7 +243,6 @@ partial class WebApp
             StaticCacheElementEntity staticCacheElement = await download.GetStaticAsync(staticPath, cacheStaticPath);
 
             Log.Debug($"Sending: {staticCacheElement.StaticCacheElementId} as {contentType}");
-
             return Results.File(staticCacheElement.CachePath, contentType);
         });
 

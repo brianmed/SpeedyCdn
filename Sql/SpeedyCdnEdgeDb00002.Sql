@@ -6,8 +6,6 @@ CREATE TABLE IF NOT EXISTS StaticCacheElements
 
     FileSizeBytes INTEGER NOT NULL,
 
-    ExpireUtc INTEGER NOT NULL,
-
     LastAccessedUtc INTEGER NOT NULL,
 
     Updated DATETIME NOT NULL DEFAULT "0001-01-01 00:00",

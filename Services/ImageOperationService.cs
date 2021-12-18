@@ -78,6 +78,9 @@ public class ImageOperationService : IImageOperationService
                         .Where(v => v.ImageCacheElementId == imageCacheElementId)
                         .SingleAsync();
 
+                    cacheElement.LastAccessedUtc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    await WebEdgeDb.SaveChangesAsync();
+
                     return cacheElement;
                 } else {
                     Log.Debug($"Zero Byte Image Operation Cache File: {imagePath}{queryString}");
