@@ -2,7 +2,9 @@ CREATE TABLE IF NOT EXISTS BarcodeCacheElements
 (
     BarcodeCacheElementId INTEGER PRIMARY KEY AUTOINCREMENT,
 
-    CachePath TEXT,
+    UrlPath TEXT NOT NULL,
+
+    QueryString TEXT NOT NULL,
 
     FileSizeBytes INTEGER NOT NULL,
 
@@ -12,4 +14,5 @@ CREATE TABLE IF NOT EXISTS BarcodeCacheElements
     Inserted DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE UNIQUE INDEX Idx_BarcodeCacheElement_UrlPath ON BarcodeCacheElements (UrlPath, QueryString);
 CREATE INDEX Idx_BarcodeCacheElement_LastAccessedUtc ON BarcodeCacheElements (LastAccessedUtc);

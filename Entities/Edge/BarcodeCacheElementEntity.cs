@@ -8,13 +8,18 @@ using Microsoft.EntityFrameworkCore;
 
 namespace SpeedyCdn.Server.Entities.Edge
 {
+    [Index(nameof(UrlPath), nameof(QueryString), IsUnique=true)]
     [Index(nameof(LastAccessedUtc))]
     public class BarcodeCacheElementEntity
     {
         [Key]
         public long BarcodeCacheElementId { get; set; }
 
-        public string CachePath { get; set; }
+        [Required]
+        public string UrlPath { get; set; }
+
+        [Required]
+        public string QueryString { get; set; }
 
         public long LastAccessedUtc { get; set; }
 

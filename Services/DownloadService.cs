@@ -7,9 +7,9 @@ using SpeedyCdn.Server.Entities.Edge;
 
 public interface IDownloadService
 {
-    Task<S3ImageCacheElementEntity> GetS3ImageAsync(string s3Bucket, string s3Key, string cachePath);
-    Task<ImageCacheElementEntity> GetImageAsync(string imagePath, string cachePath);
-    Task<StaticCacheElementEntity> GetStaticAsync(string staticPath, string cachePath);
+    Task<S3ImageCacheElementEntity> GetOriginS3ImageAsync(string s3Bucket, string s3Key);
+    Task<ImageCacheElementEntity> GetOriginImageAsync(string imagePath);
+    Task<StaticCacheElementEntity> GetOriginStaticAsync(string staticUrlPath);
 }
 
 public class DownloadService : IDownloadService
@@ -17,6 +17,8 @@ public class DownloadService : IDownloadService
     WebEdgeDbContext WebEdgeDb { get; init; }
 
     ICacheElementService CacheElementService { get; init; }
+
+    ICachePathService CachePathService { get; init; }
 
     IHttpClientFactory HttpClientFactory { get; init; }
 
@@ -26,23 +28,25 @@ public class DownloadService : IDownloadService
 
     public DownloadService(
             WebEdgeDbContext webEdgeDb,
+            ICachePathService cachePathService,
             ICacheElementService cacheElementService,
             IHttpClientFactory httpClientFactory)
     {
         CacheElementService = cacheElementService;
+
+        CachePathService = cachePathService;
 
         WebEdgeDb = webEdgeDb;
 
         HttpClientFactory = httpClientFactory;
     }
 
-    async public Task<S3ImageCacheElementEntity> GetS3ImageAsync(string s3Bucket, string s3Key, string cachePathRelativeNoId)
+    async public Task<S3ImageCacheElementEntity> GetOriginS3ImageAsync(string s3Bucket, string s3Key)
     {
-        using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"{nameof(DownloadService)}.{nameof(GetS3ImageAsync)}");
+        using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"{nameof(DownloadService)}.{nameof(GetOriginS3ImageAsync)}");
 
         string url = $"{ConfigCtx.Options.EdgeOriginUrl}/v1/s3/images/{s3Bucket}/{s3Key}";
 
-        string cachePathAbsNoId = Path.Combine(ConfigCtx.Options.EdgeCacheS3ImagesDirectory, cachePathRelativeNoId);
         S3ImageCacheElementEntity cacheElement = null;
 
         try
@@ -54,41 +58,39 @@ public class DownloadService : IDownloadService
                 sw.SpinOnce();
             }
 
-            Directory.CreateDirectory(Path.GetDirectoryName(cachePathAbsNoId));
+            string cachePathAbsolute = CachePathService.CachePath(
+                ConfigCtx.Options.EdgeCacheS3ImagesDirectory,
+                new[] { $"{s3Bucket}/{s3Key}", String.Empty });
 
-            string cachePathWithId = Directory.EnumerateFiles(
-                Path.GetDirectoryName(cachePathAbsNoId),
-                    $"{Path.GetFileName(cachePathAbsNoId)}.*", SearchOption.TopDirectoryOnly)
-                .SingleOrDefault();
+            Directory.CreateDirectory(Path.GetDirectoryName(cachePathAbsolute));
 
-            if (cachePathWithId is not null && File.Exists(cachePathWithId)) {
-                if (new FileInfo(cachePathWithId).Length > 0) {
-                    Log.Debug($"Cache Hit: {url}");
+            cacheElement = await WebEdgeDb.S3ImageCacheElements
+                .Where(v => v.UrlPath == $"{s3Bucket}/{s3Key}")
+                .Where(v => v.QueryString == String.Empty)
+                .SingleOrDefaultAsync();
 
-                    long s3ImageCacheElementId = long.Parse(Path.GetExtension(Path.GetFileName(cachePathWithId)).Replace(".", String.Empty));
-
-                    cacheElement = await WebEdgeDb.S3ImageCacheElements
-                        .Where(v => v.S3ImageCacheElementId == s3ImageCacheElementId)
-                        .SingleAsync();
+            if (cacheElement is not null && File.Exists(cachePathAbsolute)) {
+                if (new FileInfo(cachePathAbsolute).Length > 0) {
+                    Log.Debug($"Cache Hit: {s3Bucket}/{s3Key} - {cacheElement.S3ImageCacheElementId}");
 
                     cacheElement.LastAccessedUtc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                     await WebEdgeDb.SaveChangesAsync();
 
                     return cacheElement;
                 } else {
-                    Log.Debug($"Zero Byte Cache File: {url}");
+                    Log.Debug($"Zero Byte Cache File: {s3Bucket}/{s3Key}");
                 }
             } else {
-                Log.Debug($"No Cache File Found: {url}");
+                Log.Debug($"No Cache File Found: {s3Bucket}/{s3Key}");
             }
 
-            await DownloadAsync(url, cachePathAbsNoId);
+            await DownloadAsync(url, cachePathAbsolute);
 
-            cacheElement = await CacheElementService.InsertS3ImageAsync(cachePathAbsNoId);
+            cacheElement = await CacheElementService.InsertS3ImageAsync(cachePathAbsolute, $"{s3Bucket}/{s3Key}");
         }
         catch (Exception ex)
         {
-            Log.Error(ex, $"Issue Processing {url}");
+            Log.Error(ex, $"Issue Processing {s3Bucket}/{s3Key}");
         }
         finally
         {
@@ -100,55 +102,52 @@ public class DownloadService : IDownloadService
         return cacheElement;
     }
 
-    async public Task<ImageCacheElementEntity> GetImageAsync(string imagePath, string cachePathRelativeNoId)
+    async public Task<ImageCacheElementEntity> GetOriginImageAsync(string imageUrlPath)
     {
-        using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"{nameof(DownloadService)}.{nameof(GetImageAsync)}");
+        using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"{nameof(DownloadService)}.{nameof(GetOriginImageAsync)}");
 
-        string url = $"{ConfigCtx.Options.EdgeOriginUrl}/v1/images/{imagePath}";
+        string url = $"{ConfigCtx.Options.EdgeOriginUrl}/v1/images/{imageUrlPath}";
 
-        string cachePathAbsNoId = Path.Combine(ConfigCtx.Options.EdgeCacheImagesDirectory, cachePathRelativeNoId);
         ImageCacheElementEntity cacheElement = null;
 
         try
         {
             SpinWait sw = new SpinWait();
 
-            while (InFlightImagePaths.TryAdd(imagePath, true) is false)
+            while (InFlightImagePaths.TryAdd(imageUrlPath, true) is false)
             {
                 sw.SpinOnce();
             }
 
-            Directory.CreateDirectory(Path.GetDirectoryName(cachePathAbsNoId));
+            string cachePathAbsolute = CachePathService.CachePath(
+                ConfigCtx.Options.EdgeCacheImagesDirectory,
+                new[] { imageUrlPath, String.Empty });
 
-            string cachePathWithId = Directory.EnumerateFiles(
-                Path.GetDirectoryName(cachePathAbsNoId),
-                    $"{Path.GetFileName(cachePathAbsNoId)}.*", SearchOption.TopDirectoryOnly)
-                .SingleOrDefault();
+            Directory.CreateDirectory(Path.GetDirectoryName(cachePathAbsolute));
 
-            if (cachePathWithId is not null && File.Exists(cachePathWithId)) {
-                if (new FileInfo(cachePathWithId).Length > 0) {
-                    Log.Debug($"Cache Hit: {url}");
-                    
-                    long imageCacheElementId = long.Parse(Path.GetExtension(Path.GetFileName(cachePathWithId)).Replace(".", String.Empty));
+            cacheElement = await WebEdgeDb.ImageCacheElements
+                .Where(v => v.UrlPath == imageUrlPath)
+                .Where(v => v.QueryString == String.Empty)
+                .SingleOrDefaultAsync();
 
-                    cacheElement = await WebEdgeDb.ImageCacheElements
-                        .Where(v => v.ImageCacheElementId == imageCacheElementId)
-                        .SingleAsync();
+            if (cacheElement is not null && File.Exists(cachePathAbsolute)) {
+                if (new FileInfo(cachePathAbsolute).Length > 0) {
+                    Log.Debug($"Cache Hit: {imageUrlPath} - {cacheElement.ImageCacheElementId}");
 
                     cacheElement.LastAccessedUtc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                     await WebEdgeDb.SaveChangesAsync();
 
                     return cacheElement;
                 } else {
-                    Log.Debug($"Zero Byte Cache File: {url}");
+                    Log.Debug($"Zero Byte Cache File: {imageUrlPath}");
                 }
             } else {
-                Log.Debug($"No Cache File Found: {url}");
+                Log.Debug($"No Cache File Found: {imageUrlPath}");
             }
 
-            await DownloadAsync(url, cachePathAbsNoId);
+            await DownloadAsync(url, cachePathAbsolute);
 
-            cacheElement = await CacheElementService.InsertImageAsync(cachePathAbsNoId);
+            cacheElement = await CacheElementService.InsertImageAsync(cachePathAbsolute, imageUrlPath);
         }
         catch (Exception ex)
         {
@@ -156,72 +155,69 @@ public class DownloadService : IDownloadService
         }
         finally
         {
-            if (InFlightImagePaths.TryRemove(imagePath, out bool whence) is false) {
-                Log.Error($"Issue Removing {imagePath}");
+            if (InFlightImagePaths.TryRemove(imageUrlPath, out bool whence) is false) {
+                Log.Error($"Issue Removing {imageUrlPath}");
             }
         }
 
         return cacheElement;
     }
 
-    async public Task<StaticCacheElementEntity> GetStaticAsync(string staticPath, string cachePathRelativeNoId)
+    async public Task<StaticCacheElementEntity> GetOriginStaticAsync(string staticUrlPath)
     {
-        using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"{nameof(DownloadService)}.{nameof(GetStaticAsync)}");
+        using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"{nameof(DownloadService)}.{nameof(GetOriginStaticAsync)}");
 
-        string url = $"{ConfigCtx.Options.EdgeOriginUrl}/v1/static/{staticPath}";
+        string url = $"{ConfigCtx.Options.EdgeOriginUrl}/v1/static/{staticUrlPath}";
 
-        string cachePathAbsNoId = Path.Combine(ConfigCtx.Options.EdgeCacheStaticDirectory, cachePathRelativeNoId);
         StaticCacheElementEntity cacheElement = null;
 
         try
         {
             SpinWait sw = new SpinWait();
 
-            while (InFlightStaticPaths.TryAdd(staticPath, true) is false)
+            while (InFlightStaticPaths.TryAdd(staticUrlPath, true) is false)
             {
                 sw.SpinOnce();
             }
 
-            Directory.CreateDirectory(Path.GetDirectoryName(cachePathAbsNoId));
+            string cachePathAbsolute = CachePathService.CachePath(
+                ConfigCtx.Options.EdgeCacheImagesDirectory,
+                new[] { staticUrlPath, String.Empty });
 
-            string cachePathWithId = Directory.EnumerateFiles(
-                Path.GetDirectoryName(cachePathAbsNoId),
-                    $"{Path.GetFileName(cachePathAbsNoId)}.*", SearchOption.TopDirectoryOnly)
-                .SingleOrDefault();
+            Directory.CreateDirectory(Path.GetDirectoryName(cachePathAbsolute));
 
-            if (cachePathWithId is not null && File.Exists(cachePathWithId)) {
-                if (new FileInfo(cachePathWithId).Length > 0) {
-                    Log.Debug($"Cache Hit: {url}");
+            cacheElement = await WebEdgeDb.StaticCacheElements
+                .Where(v => v.UrlPath == staticUrlPath)
+                .Where(v => v.QueryString == String.Empty)
+                .SingleOrDefaultAsync();
 
-                    long staticCacheElementId = long.Parse(Path.GetExtension(Path.GetFileName(cachePathWithId)).Replace(".", String.Empty));
-
-                    cacheElement = await WebEdgeDb.StaticCacheElements
-                        .Where(v => v.StaticCacheElementId == staticCacheElementId)
-                        .SingleAsync();
+            if (cacheElement is not null && File.Exists(cachePathAbsolute)) {
+                if (new FileInfo(cachePathAbsolute).Length > 0) {
+                    Log.Debug($"Cache Hit: {staticUrlPath}");
 
                     cacheElement.LastAccessedUtc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                     await WebEdgeDb.SaveChangesAsync();
 
                     return cacheElement;
                 } else {
-                    Log.Debug($"Zero Byte Cache File: {url}");
+                    Log.Debug($"Zero Byte Cache File: {staticUrlPath}");
                 }
             } else {
-                Log.Debug($"No Cache File Found: {url}");
+                Log.Debug($"No Cache File Found: {staticUrlPath}");
             }
 
-            await DownloadAsync(url, cachePathAbsNoId);
+            await DownloadAsync(url, cachePathAbsolute);
 
-            cacheElement = await CacheElementService.InsertStaticAsync(cachePathAbsNoId);
+            cacheElement = await CacheElementService.InsertStaticAsync(cachePathAbsolute, staticUrlPath);
         }
         catch (Exception ex)
         {
-            Log.Error(ex, $"Issue Processing {url}");
+            Log.Error(ex, $"Issue Processing {staticUrlPath}");
         }
         finally
         {
-            if (InFlightStaticPaths.TryRemove(staticPath, out bool whence) is false) {
-                Log.Error($"Issue Removing {staticPath}");
+            if (InFlightStaticPaths.TryRemove(staticUrlPath, out bool whence) is false) {
+                Log.Error($"Issue Removing {staticUrlPath}");
             }
         }
 

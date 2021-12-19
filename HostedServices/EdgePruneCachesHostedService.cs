@@ -40,6 +40,8 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
 
             WebEdgeDbContext webEdgeDb = scope.ServiceProvider.GetRequiredService<WebEdgeDbContext>();
 
+            ICachePathService cachePathService = scope.ServiceProvider.GetRequiredService<ICachePathService>();
+
             // TODO: so much code.  Is there a better way..
             long utcNowSubOneDayUnixEpoch = DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeSeconds();
 
@@ -95,7 +97,7 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
                                 break;
                             }
 
-                            string filePath = Path.Combine(ConfigCtx.Options.EdgeCacheImagesDirectory, imageCacheElementEntity.CachePath);
+                            string filePath = cachePathService.CachePath(imageCacheElementEntity);
 
                             if (File.Exists(filePath)) {
                                 File.Delete(filePath);
@@ -176,7 +178,7 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
                                 break;
                             }
 
-                            string filePath = Path.Combine(ConfigCtx.Options.EdgeCacheBarcodesDirectory, barcodeCacheElementEntity.CachePath);
+                            string filePath = cachePathService.CachePath(barcodeCacheElementEntity);
 
                             if (File.Exists(filePath)) {
                                 File.Delete(filePath);
@@ -257,7 +259,7 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
                                 break;
                             }
 
-                            string filePath = Path.Combine(ConfigCtx.Options.EdgeCacheS3ImagesDirectory, s3ImageCacheElementEntity.CachePath);
+                            string filePath = cachePathService.CachePath(s3ImageCacheElementEntity);
 
                             if (File.Exists(filePath)) {
                                 File.Delete(filePath);
@@ -338,7 +340,7 @@ public class EdgePruneCacheHostedService : IHostedService, IDisposable
                                 break;
                             }
 
-                            string filePath = Path.Combine(ConfigCtx.Options.EdgeCacheStaticDirectory, staticCacheElementEntity.CachePath);
+                            string filePath = cachePathService.CachePath(staticCacheElementEntity);
 
                             if (File.Exists(filePath)) {
                                 File.Delete(filePath);

@@ -4,10 +4,10 @@ using SpeedyCdn.Server.Entities.Edge;
 
 public interface ICacheElementService
 {
-    Task<BarcodeCacheElementEntity> InsertBarcodeAsync(string cachePath);
-    Task<ImageCacheElementEntity> InsertImageAsync(string cachePath);
-    Task<S3ImageCacheElementEntity> InsertS3ImageAsync(string cachePath);
-    Task<StaticCacheElementEntity> InsertStaticAsync(string cachePath);
+    Task<BarcodeCacheElementEntity> InsertBarcodeAsync(string barcodeCachePath, string queryString);
+    Task<ImageCacheElementEntity> InsertImageAsync(string imageCachePath, string imageUrlPath, string queryString = "");
+    Task<S3ImageCacheElementEntity> InsertS3ImageAsync(string s3ImageCachePath, string s3ImagePath, string queryString = "");
+    Task<StaticCacheElementEntity> InsertStaticAsync(string staticCachePath, string staticUrlPath, string queryString = "");
 }
 
 public class CacheElementService : ICacheElementService
@@ -19,110 +19,78 @@ public class CacheElementService : ICacheElementService
         WebEdgeDb = webEdgeDb;
     }
 
-    public async Task<BarcodeCacheElementEntity> InsertBarcodeAsync(string cachePath)
+    public async Task<BarcodeCacheElementEntity> InsertBarcodeAsync(string barcodeCachePath, string queryString)
     {
         long lastAccessedutc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         long expireUtc = DateTimeOffset.UtcNow.AddDays(7).ToUnixTimeSeconds();
 
         BarcodeCacheElementEntity barcodeCacheElement = new BarcodeCacheElementEntity
         {
-            FileSizeBytes = new FileInfo(cachePath).Length,
+            UrlPath = String.Empty,
+            QueryString = queryString,
+            FileSizeBytes = new FileInfo(barcodeCachePath).Length,
             LastAccessedUtc = lastAccessedutc
         };
 
-        using var transaction = WebEdgeDb.Database.BeginTransaction();
-        
         WebEdgeDb.Add(barcodeCacheElement);
         await WebEdgeDb.SaveChangesAsync();
-
-        barcodeCacheElement.CachePath = $"{cachePath}.{barcodeCacheElement.BarcodeCacheElementId}";
-        await WebEdgeDb.SaveChangesAsync();
-
-        Log.Debug($"Moving: {cachePath} -> {cachePath}.{barcodeCacheElement.BarcodeCacheElementId}");
-        File.Move(cachePath, $"{cachePath}.{barcodeCacheElement.BarcodeCacheElementId}");
-
-        transaction.Commit();
 
         return barcodeCacheElement;
     }
 
-    public async Task<ImageCacheElementEntity> InsertImageAsync(string imageCachePath)
+    public async Task<ImageCacheElementEntity> InsertImageAsync(string imageCachePath, string imageUrlPath, string queryString = "")
     {
         long lastAccessedutc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         long expireUtc = DateTimeOffset.UtcNow.AddDays(7).ToUnixTimeSeconds();
         
         ImageCacheElementEntity imageCacheElement = new ImageCacheElementEntity
         {
+            UrlPath = imageUrlPath,
+            QueryString = queryString,
             FileSizeBytes = new FileInfo(imageCachePath).Length,
             LastAccessedUtc = lastAccessedutc
         };
 
-        using var transaction = WebEdgeDb.Database.BeginTransaction();
-
         WebEdgeDb.Add(imageCacheElement);
         await WebEdgeDb.SaveChangesAsync();
-
-        imageCacheElement.CachePath = $"{imageCachePath}.{imageCacheElement.ImageCacheElementId}";
-        await WebEdgeDb.SaveChangesAsync();
-
-        Log.Debug($"Moving: {imageCachePath} -> {imageCachePath}.{imageCacheElement.ImageCacheElementId}");
-        File.Move(imageCachePath, $"{imageCachePath}.{imageCacheElement.ImageCacheElementId}");
-
-        transaction.Commit();
 
         return imageCacheElement;
     }
 
-    public async Task<S3ImageCacheElementEntity> InsertS3ImageAsync(string s3ImageCachePath)
+    public async Task<S3ImageCacheElementEntity> InsertS3ImageAsync(string s3ImageCachePath, string s3ImageUrlPath, string queryString = "")
     {
         long lastAccessedutc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         long expireUtc = DateTimeOffset.UtcNow.AddDays(7).ToUnixTimeSeconds();
 
         S3ImageCacheElementEntity s3ImageCacheElement = new S3ImageCacheElementEntity
         {
+            UrlPath = s3ImageUrlPath,
+            QueryString = queryString,
             FileSizeBytes = new FileInfo(s3ImageCachePath).Length,
             LastAccessedUtc = lastAccessedutc
         };
 
-        using var transaction = WebEdgeDb.Database.BeginTransaction();
-
         WebEdgeDb.Add(s3ImageCacheElement);
         await WebEdgeDb.SaveChangesAsync();
-
-        s3ImageCacheElement.CachePath = $"{s3ImageCachePath}.{s3ImageCacheElement.S3ImageCacheElementId}";
-        await WebEdgeDb.SaveChangesAsync();
-
-        Log.Debug($"Moving: {s3ImageCachePath} -> {s3ImageCachePath}.{s3ImageCacheElement.S3ImageCacheElementId}");
-        File.Move(s3ImageCachePath, $"{s3ImageCachePath}.{s3ImageCacheElement.S3ImageCacheElementId}");
-
-        transaction.Commit();
 
         return s3ImageCacheElement;
     }
 
-    public async Task<StaticCacheElementEntity> InsertStaticAsync(string staticCachePath)
+    public async Task<StaticCacheElementEntity> InsertStaticAsync(string staticCachePath, string staticUrlPath, string queryString = "")
     {
         long lastAccessedutc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         long expireUtc = DateTimeOffset.UtcNow.AddDays(7).ToUnixTimeSeconds();
 
         StaticCacheElementEntity staticCacheElement = new StaticCacheElementEntity
         {
+            UrlPath = staticUrlPath,
+            QueryString = queryString,
             FileSizeBytes = new FileInfo(staticCachePath).Length,
             LastAccessedUtc = lastAccessedutc
         };
 
-        using var transaction = WebEdgeDb.Database.BeginTransaction();
-
         WebEdgeDb.Add(staticCacheElement);
         await WebEdgeDb.SaveChangesAsync();
-
-        staticCacheElement.CachePath = $"{staticCachePath}.{staticCacheElement.StaticCacheElementId}";
-        await WebEdgeDb.SaveChangesAsync();
-
-        Log.Debug($"Moving: {staticCachePath} -> {staticCachePath}.{staticCacheElement.StaticCacheElementId}");
-        File.Move(staticCachePath, $"{staticCachePath}.{staticCacheElement.StaticCacheElementId}");
-
-        transaction.Commit();
 
         return staticCacheElement;
     }

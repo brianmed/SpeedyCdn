@@ -6,7 +6,7 @@ using SpeedyCdn.Server.Entities.Edge;
 
 public interface IBarcodeService
 {
-    Task<BarcodeCacheElementEntity> GenerateFromQueryString(string barcodePathRelative, QueryString queryString);
+    Task<BarcodeCacheElementEntity> GenerateFromQueryString(QueryString queryString);
 }
 
 public class BarcodeService : IBarcodeService
@@ -15,6 +15,8 @@ public class BarcodeService : IBarcodeService
 
     ICacheElementService CacheElementService { get; init; }
 
+    ICachePathService CachePathService { get; init; }
+
     IQueryStringService QueryStringService { get; init; }
 
     static ConcurrentDictionary<string, bool> InFlightBarcodeOperations = new();
@@ -22,60 +24,57 @@ public class BarcodeService : IBarcodeService
     public BarcodeService(
             WebEdgeDbContext webEdgeDb,
             ICacheElementService cacheElementService,
+            ICachePathService cachePathService,
             IQueryStringService queryStringService)
     {
         CacheElementService = cacheElementService;
+
+        CachePathService = cachePathService;
 
         WebEdgeDb = webEdgeDb;
 
         QueryStringService = queryStringService;
     }
 
-    public async Task<BarcodeCacheElementEntity> GenerateFromQueryString(string barcodePathRelative, QueryString queryString)
+    public async Task<BarcodeCacheElementEntity> GenerateFromQueryString(QueryString queryString)
     {
         using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"{nameof(BarcodeService)}.{nameof(GenerateFromQueryString)}");
 
-        string barcodePathAbsNoId = null;
         BarcodeCacheElementEntity cacheElement = null;
+
+        string cachePathAbsolute = CachePathService.CachePath(
+            ConfigCtx.Options.EdgeCacheBarcodesDirectory,
+            new[] { String.Empty, queryString.ToString() });
 
         try
         {
             SpinWait sw = new SpinWait();
 
-            while (InFlightBarcodeOperations.TryAdd(barcodePathRelative, true) is false)
+            while (InFlightBarcodeOperations.TryAdd(queryString.ToString(), true) is false)
             {
                 sw.SpinOnce();
             }
 
-            barcodePathAbsNoId = Path.Combine(ConfigCtx.Options.EdgeCacheBarcodesDirectory, barcodePathRelative);
-            cacheElement = null;
+            Directory.CreateDirectory(Path.GetDirectoryName(cachePathAbsolute));
 
-            Directory.CreateDirectory(Path.GetDirectoryName(barcodePathAbsNoId));
+            cacheElement = await WebEdgeDb.BarcodeCacheElements
+                .Where(v => v.UrlPath == String.Empty)
+                .Where(v => v.QueryString == queryString.ToString())
+                .SingleOrDefaultAsync();
 
-            string barcodePathAbsWithId = Directory.EnumerateFiles(
-                Path.GetDirectoryName(barcodePathAbsNoId),
-                    $"{Path.GetFileName(barcodePathAbsNoId)}.*", SearchOption.TopDirectoryOnly)
-                .SingleOrDefault();
-
-            if (barcodePathAbsWithId is not null && File.Exists(barcodePathAbsWithId)) {
-                if (new FileInfo(barcodePathAbsWithId).Length > 0) {
-                    Log.Debug($"Barcode Cache Hit: {queryString}");
-                    
-                    long barcodeCacheElementId = long.Parse(Path.GetExtension(Path.GetFileName(barcodePathAbsWithId)).Replace(".", String.Empty));
-
-                    cacheElement = await WebEdgeDb.BarcodeCacheElements
-                        .Where(v => v.BarcodeCacheElementId == barcodeCacheElementId)
-                        .SingleAsync();
+            if (cacheElement is not null && File.Exists(cachePathAbsolute)) {
+                if (new FileInfo(cachePathAbsolute).Length > 0) {
+                    Log.Debug($"Cache Hit: {queryString}");
 
                     cacheElement.LastAccessedUtc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                     await WebEdgeDb.SaveChangesAsync();
 
                     return cacheElement;
                 } else {
-                    Log.Debug($"Zero Byte Barcode Cache File: {queryString}");
+                    Log.Debug($"Zero Byte Cache File: {queryString}");
                 }
             } else {
-                Log.Debug($"No Barcode Cache File Found: {queryString}");
+                Log.Debug($"No Cache File Found: {queryString}");
             }
 
             Dictionary<string, HashSet<string>> barcodeRequiredParameters = new();
@@ -88,21 +87,21 @@ public class BarcodeService : IBarcodeService
 
             BarcodeFormat barcodeFormat = BarcodeFormatFactory(args.First().Name);
 
-            using (FileStream barcodeStream = new FileStream(barcodePathAbsNoId, FileMode.OpenOrCreate))
+            using (FileStream barcodeStream = new FileStream(cachePathAbsolute, FileMode.OpenOrCreate))
             {
                 barcodeFormat.Generate(barcodeStream, args.First().Args);
             }
 
-            cacheElement = await CacheElementService.InsertBarcodeAsync(barcodePathAbsNoId);
+            cacheElement = await CacheElementService.InsertBarcodeAsync(cachePathAbsolute, queryString.ToString());
         }
         catch (Exception ex)
         {
-            Log.Error(ex, $"Issue Generating Barcode: {barcodePathRelative} {queryString}");
+            Log.Error(ex, $"Issue Generating Barcode: {queryString}");
         }
         finally
         {
-            if (InFlightBarcodeOperations.TryRemove(barcodePathRelative, out bool whence) is false) {
-                Log.Error($"Issue Removing {barcodePathRelative}");
+            if (InFlightBarcodeOperations.TryRemove(queryString.ToString(), out bool whence) is false) {
+                Log.Error($"Issue Removing {queryString}");
             }
         }
 

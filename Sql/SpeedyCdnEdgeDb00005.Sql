@@ -2,7 +2,9 @@ CREATE TABLE IF NOT EXISTS S3ImageCacheElements
 (
     S3ImageCacheElementId INTEGER PRIMARY KEY AUTOINCREMENT,
 
-    CachePath TEXT,
+    UrlPath TEXT NOT NULL,
+
+    QueryString TEXT NOT NULL,
 
     FileSizeBytes INTEGER NOT NULL,
 
@@ -12,4 +14,5 @@ CREATE TABLE IF NOT EXISTS S3ImageCacheElements
     Inserted DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE UNIQUE INDEX Idx_S3ImageCacheElement_UrlPath ON S3ImageCacheElements (UrlPath, QueryString);
 CREATE INDEX Idx_S3ImageCacheElement_LastAccessedUtc ON S3ImageCacheElements (LastAccessedUtc);

@@ -2,7 +2,9 @@ CREATE TABLE IF NOT EXISTS ImageCacheElements
 (
     ImageCacheElementId INTEGER PRIMARY KEY AUTOINCREMENT,
 
-    CachePath TEXT,
+    UrlPath TEXT NOT NULL,
+
+    QueryString TEXT NOT NULL,
 
     FileSizeBytes INTEGER NOT NULL,
 

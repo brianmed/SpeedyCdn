@@ -17,8 +17,8 @@ using SpeedyCdn.Server.Entities.Edge;
 
 public interface IImageOperationService
 {
-    Task<ImageCacheElementEntity> ImageFromQueryAsync(string _originalCachePath, QueryString queryString, string _imageOpCachePath, string imagePath);
-    Task<S3ImageCacheElementEntity> S3ImageFromQueryAsync(string _originalCachePath, QueryString queryString, string _imageOpCachePath, string imagePath);
+    Task<ImageCacheElementEntity> ImageFromQueryAsync(ImageCacheElementEntity originaImage, QueryString queryString);
+    Task<S3ImageCacheElementEntity> S3ImageFromQueryAsync(S3ImageCacheElementEntity originalImage, QueryString queryString);
 }
 
 public class ImageOperationService : IImageOperationService
@@ -29,153 +29,160 @@ public class ImageOperationService : IImageOperationService
 
     ICacheElementService CacheElementService { get; init; }
 
+    ICachePathService CachePathService { get; init; }
+
     public IQueryStringService QueryStringService { get; init; }
 
     public ImageOperationService(
             WebEdgeDbContext webEdgeDb,
             ICacheElementService cacheElementService,
+            ICachePathService cachePathService,
             IQueryStringService queryStringService)
     {
         CacheElementService = cacheElementService;
+
+        CachePathService = cachePathService;
 
         WebEdgeDb = webEdgeDb;
 
         QueryStringService = queryStringService;
     }
 
-    async public Task<ImageCacheElementEntity> ImageFromQueryAsync(string _originalCachePath, QueryString queryString, string _imageOpCachePath, string imagePath)
+    async public Task<ImageCacheElementEntity> ImageFromQueryAsync(ImageCacheElementEntity originaImage, QueryString queryString)
     {
         using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"{nameof(ImageOperationService)}.{nameof(ImageFromQueryAsync)}");
 
-        string originalCachePath = Path.Combine(ConfigCtx.Options.EdgeCacheImagesDirectory, _originalCachePath);
-        string imageOpCachePath = Path.Combine(ConfigCtx.Options.EdgeCacheImagesDirectory, _imageOpCachePath);
-
         ImageCacheElementEntity cacheElement = null;
+
+        string mutexKey = originaImage.UrlPath;
+
+        string cacheImageOpPathAbs = CachePathService.CachePath(
+                ConfigCtx.Options.EdgeCacheImagesDirectory, new[] { originaImage.UrlPath, queryString.ToString() });
 
         try
         {
             SpinWait sw = new SpinWait();
 
-            while (InFlightImageOperations.TryAdd(_imageOpCachePath, true) is false)
+            while (InFlightImageOperations.TryAdd(mutexKey, true) is false)
             {
                 sw.SpinOnce();
             }
 
-            Directory.CreateDirectory(Path.GetDirectoryName(imageOpCachePath));
+            Directory.CreateDirectory(Path.GetDirectoryName(cacheImageOpPathAbs));
 
-            string imageOpWithId = Directory.EnumerateFiles(
-                Path.GetDirectoryName(imageOpCachePath),
-                    $"{Path.GetFileName(imageOpCachePath)}.*", SearchOption.TopDirectoryOnly)
-                .SingleOrDefault();
+            cacheElement = await WebEdgeDb.ImageCacheElements
+                .Where(v => v.UrlPath == originaImage.UrlPath)
+                .Where(v => v.QueryString == queryString.ToString())
+                .SingleOrDefaultAsync();
 
-            if (imageOpWithId is not null && File.Exists(imageOpWithId)) {
-                if (new FileInfo(imageOpWithId).Length > 0) {
-                    Log.Debug($"Image Operation Cache Hit: {imagePath}{queryString} - {imageOpWithId}");
-                    
-                    long imageCacheElementId = long.Parse(Path.GetExtension(Path.GetFileName(imageOpWithId)).Replace(".", String.Empty));
-
-                    cacheElement = await WebEdgeDb.ImageCacheElements
-                        .Where(v => v.ImageCacheElementId == imageCacheElementId)
-                        .SingleAsync();
+            if (cacheElement is not null && File.Exists(cacheImageOpPathAbs)) {
+                if (new FileInfo(cacheImageOpPathAbs).Length > 0) {
+                    Log.Debug($"Cache Hit: {cacheElement.UrlPath}{cacheElement.QueryString} - {cacheElement.ImageCacheElementId}");
 
                     cacheElement.LastAccessedUtc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                     await WebEdgeDb.SaveChangesAsync();
 
                     return cacheElement;
                 } else {
-                    Log.Debug($"Zero Byte Image Operation Cache File: {imagePath}{queryString}");
+                    Log.Debug($"Zero Byte Image Operation Cache File: {originaImage.UrlPath}{queryString}");
                 }
             } else {
-                Log.Debug($"No Image Operation Cache File Found: {imagePath}{queryString}");
+                Log.Debug($"No Image Operation Cache File Found: {originaImage.UrlPath}{queryString}");
             }
 
-            await RunAllFromQueryAsync(originalCachePath, queryString, imageOpCachePath, imagePath);
+            await RunAllFromQueryAsync(originaImage, queryString, cacheImageOpPathAbs);
 
-            cacheElement = await CacheElementService.InsertImageAsync(imageOpCachePath);
+            cacheElement = await CacheElementService.InsertImageAsync(cacheImageOpPathAbs, originaImage.UrlPath, queryString.ToString());
         }
         catch (Exception ex)
         {
-            Log.Error(ex, $"Issue During ImageFromQueryAsync: {originalCachePath} {queryString}");
+            Log.Error(ex, $"Issue During ImageFromQueryAsync: {originaImage.UrlPath} {queryString}");
         }
         finally
         {
-            if (InFlightImageOperations.TryRemove(_imageOpCachePath, out bool whence) is false) {
-                Log.Error($"Issue Removing {_imageOpCachePath}");
+            if (InFlightImageOperations.TryRemove(mutexKey, out bool whence) is false) {
+                Log.Error($"Issue Removing {mutexKey}");
             }
         }
 
         return cacheElement;
     }
 
-    async public Task<S3ImageCacheElementEntity> S3ImageFromQueryAsync(string _originalCachePath, QueryString queryString, string _s3ImageOpCachePath, string s3ImagePath)
+    async public Task<S3ImageCacheElementEntity> S3ImageFromQueryAsync(S3ImageCacheElementEntity originalS3Image, QueryString queryString)
     {
         using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"{nameof(ImageOperationService)}.{nameof(S3ImageFromQueryAsync)}");
 
-        string originalCachePath = Path.Combine(ConfigCtx.Options.EdgeCacheS3ImagesDirectory, _originalCachePath);
-        string s3ImageOpCachePath = Path.Combine(ConfigCtx.Options.EdgeCacheS3ImagesDirectory, _s3ImageOpCachePath);
-
         S3ImageCacheElementEntity cacheElement = null;
+
+        string mutexKey = $"{originalS3Image.UrlPath}{queryString}";
+
+        string cacheS3ImageOpAbsolute = CachePathService.CachePath(
+            ConfigCtx.Options.EdgeCacheS3ImagesDirectory, 
+            new[] { originalS3Image.UrlPath, queryString.ToString() });
 
         try
         {
             SpinWait sw = new SpinWait();
 
-            while (InFlightImageOperations.TryAdd(_s3ImageOpCachePath, true) is false)
+            while (InFlightImageOperations.TryAdd(mutexKey, true) is false)
             {
                 sw.SpinOnce();
             }
 
-            Directory.CreateDirectory(Path.GetDirectoryName(s3ImageOpCachePath));
+            Directory.CreateDirectory(Path.GetDirectoryName(cacheS3ImageOpAbsolute));
 
-            string s3ImageOpWithId = Directory.EnumerateFiles(
-                Path.GetDirectoryName(s3ImageOpCachePath),
-                    $"{Path.GetFileName(s3ImageOpCachePath)}.*", SearchOption.TopDirectoryOnly)
-                .SingleOrDefault();
+            cacheElement = await WebEdgeDb.S3ImageCacheElements
+                .Where(v => v.UrlPath == originalS3Image.UrlPath)
+                .Where(v => v.QueryString == queryString.ToString())
+                .SingleOrDefaultAsync();
 
-            if (s3ImageOpWithId is not null && File.Exists(s3ImageOpWithId)) {
-                if (new FileInfo(s3ImageOpWithId).Length > 0) {
-                    Log.Debug($"S3Image Operation Cache Hit: {s3ImagePath}{queryString}");
+            if (cacheElement is not null && File.Exists(cacheS3ImageOpAbsolute)) {
+                if (new FileInfo(cacheS3ImageOpAbsolute).Length > 0) {
+                    Log.Debug($"Cache Hit: {originalS3Image.UrlPath}{queryString}");
                     
-                    long s3ImageCacheElementId = long.Parse(Path.GetExtension(Path.GetFileName(s3ImageOpWithId)).Replace(".", String.Empty));
-
-                    cacheElement = await WebEdgeDb.S3ImageCacheElements
-                        .Where(v => v.S3ImageCacheElementId == s3ImageCacheElementId)
-                        .SingleAsync();
+                    cacheElement.LastAccessedUtc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    await WebEdgeDb.SaveChangesAsync();
 
                     return cacheElement;
                 } else {
-                    Log.Debug($"Zero Byte S3Image Operation Cache File: {s3ImagePath}{queryString}");
+                    Log.Debug($"Zero Byte Cache File: {originalS3Image.UrlPath}{queryString}");
                 }
             } else {
-                Log.Debug($"No S3Image Operation Cache File Found: {s3ImagePath}{queryString}");
+                Log.Debug($"No Cache File Found: {originalS3Image.UrlPath}{queryString}");
             }
 
-            await RunAllFromQueryAsync(originalCachePath, queryString, s3ImageOpCachePath, s3ImagePath);
+            await RunAllFromQueryAsync(originalS3Image, queryString, cacheS3ImageOpAbsolute);
 
-            cacheElement = await CacheElementService.InsertS3ImageAsync(s3ImageOpCachePath);
+            cacheElement = await CacheElementService.InsertS3ImageAsync(cacheS3ImageOpAbsolute, originalS3Image.UrlPath, queryString.ToString());
         }
         catch (Exception ex)
         {
-            Log.Error(ex, $"Issue During S3ImageFromQueryAsync: {originalCachePath} {queryString}");
+            Log.Error(ex, $"Issue: {originalS3Image.UrlPath}{queryString}");
         }
         finally
         {
-            if (InFlightImageOperations.TryRemove(_s3ImageOpCachePath, out bool whence) is false) {
-                Log.Error($"Issue Removing {_s3ImageOpCachePath}");
+            if (InFlightImageOperations.TryRemove(mutexKey, out bool whence) is false) {
+                Log.Error($"Issue Removing {mutexKey}");
             }
         }
 
         return cacheElement;
     }
 
-    async public Task RunAllFromQueryAsync(string originalCachePath, QueryString queryString, string imageOpCachePath, string imagePath)
+    async public Task RunAllFromQueryAsync(object originalImage, QueryString queryString, string newImageOpPathAbs)
     {
         using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"{nameof(ImageOperationService)}.{nameof(RunAllFromQueryAsync)}");
 
         try
         {
+            string originalCachePath = originalImage.GetType().Name switch
+            {
+                nameof(ImageCacheElementEntity) => CachePathService.CachePath(originalImage as ImageCacheElementEntity),
+                nameof(S3ImageCacheElementEntity) => CachePathService.CachePath(originalImage as S3ImageCacheElementEntity)
+            };
+                
             using (FileStream sourceStream = new(originalCachePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.Asynchronous | FileOptions.SequentialScan))
-            using (FileStream destinationStream = new(imageOpCachePath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.Asynchronous | FileOptions.SequentialScan))
+            using (FileStream destinationStream = new(newImageOpPathAbs, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.Asynchronous | FileOptions.SequentialScan))
             {
                 await sourceStream.CopyToAsync(destinationStream);
             }
@@ -207,7 +214,7 @@ public class ImageOperationService : IImageOperationService
 
             foreach ((string Name, List<string> Args) arg in args)
             {
-                using FileStream imageCacheFS = new FileStream(Path.Combine(ConfigCtx.Options.EdgeCacheImagesDirectory, imageOpCachePath), FileMode.OpenOrCreate);
+                using FileStream imageCacheFS = new FileStream(newImageOpPathAbs, FileMode.Open);
 
                 ImageOperation imageOperation = ImageOperationFactory(arg.Name);
 
@@ -216,7 +223,7 @@ public class ImageOperationService : IImageOperationService
         }
         catch (Exception ex)
         {
-            Log.Error(ex, $"Issue During Image Operation: {originalCachePath} {queryString}");
+            Log.Error(ex, $"Issue During Image Operation: {originalImage.GetType().GetProperty("UrlPath").GetValue(originalImage)} {queryString}");
 
             throw ex;
         }

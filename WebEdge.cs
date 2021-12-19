@@ -154,19 +154,17 @@ partial class WebApp
                 Log.Warning($"No content type found for {fileName}");
             }
 
-            string cacheImagePathJson = JsonSerializer.Serialize(new[] { $"{bucketName}/{imageKey}" });
-            string cacheImagePath = cachePathService.RelativeWithBucket(cacheImagePathJson);
-            S3ImageCacheElementEntity s3ImageCacheOriginalElement = await download.GetS3ImageAsync(bucketName, imageKey, cacheImagePath);
+            S3ImageCacheElementEntity originalElement = await download
+                .GetOriginS3ImageAsync(bucketName, imageKey);
 
-            string cacheImagePathAndQueryStringJson = JsonSerializer.Serialize(new[] { $"{bucketName}/{imageKey}", queryString.ToString() });
-            string cacheImagePathAndQueryString = cachePathService.RelativeWithBucket(cacheImagePathAndQueryStringJson);
-            S3ImageCacheElementEntity s3ImageCacheModifiedElement = await imageOperation.S3ImageFromQueryAsync(cacheImagePath, queryString, cacheImagePathAndQueryString, $"{bucketName}/{imageKey}");
+            S3ImageCacheElementEntity modifiedElement = await imageOperation
+                .S3ImageFromQueryAsync(originalElement, queryString);
 
-            Log.Debug($"Sending: {s3ImageCacheModifiedElement.S3ImageCacheElementId} - {fileName} as {contentType}");
-            return Results.File(s3ImageCacheModifiedElement.CachePath, contentType);
+            Log.Debug($"Sending: {fileName} as {contentType}");
+            return Results.File(cachePathService.CachePath(modifiedElement), contentType);
         });
 
-        app.MapGet("/v1/images/{*imagePath}", async (
+        app.MapGet("/v1/images/{*imageUrlPath}", async (
             [FromServices]WebEdgeDbContext webEdgeDb,
             [FromServices]ICacheElementService cacheElementService,
             [FromServices]ICachePathService cachePathService,
@@ -175,7 +173,7 @@ partial class WebApp
             [FromServices]IHmacService hmacService,
             [FromServices]IQueryStringService queryStringService,
             HttpRequest httpRequest,
-            string imagePath) => 
+            string imageUrlPath) => 
         {
             using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", "Edge::v1/images");
 
@@ -183,11 +181,11 @@ partial class WebApp
 
             QueryString queryString = queryStringService.CreateExcept(httpRequest.QueryString, "signature");
 
-            if (hmacService.IsValid($"images/{imagePath}", httpRequest.QueryString) is false) {
+            if (hmacService.IsValid($"images/{imageUrlPath}", httpRequest.QueryString) is false) {
                 return Results.StatusCode(404);
             }
 
-            string fileName = Path.GetFileName(imagePath);
+            string fileName = Path.GetFileName(imageUrlPath);
             string contentType = "application/octect-stream";
 
             FileExtensionContentTypeProvider provider = new();
@@ -197,22 +195,17 @@ partial class WebApp
                 Log.Warning($"No content type found for {fileName}");
             }
 
-            string cacheImagePathJson = JsonSerializer.Serialize(new[] { imagePath });
-            string cacheImagePath = cachePathService.RelativeWithBucket(cacheImagePathJson);
+            ImageCacheElementEntity imageCacheElement = await download
+                .GetOriginImageAsync(imageUrlPath);
 
-            ImageCacheElementEntity imageCacheElement = await download.GetImageAsync(imagePath, cacheImagePath);
+            ImageCacheElementEntity imageCacheModifiedElement = await imageOperation
+                .ImageFromQueryAsync(imageCacheElement, queryString);
 
-            string cacheImagePathAndQueryStringJson = JsonSerializer.Serialize(new[] { imagePath, queryString.ToString() });
-            string cacheImagePathAndQueryString = cachePathService.RelativeWithBucket(cacheImagePathAndQueryStringJson);
-
-            ImageCacheElementEntity imageCacheAndQueryElement =
-                await imageOperation.ImageFromQueryAsync(imageCacheElement.CachePath, queryString, cacheImagePathAndQueryString, imagePath);
-
-            Log.Debug($"Sending: {imageCacheAndQueryElement.CachePath} - {fileName} as {contentType}");
-            return Results.File(imageCacheAndQueryElement.CachePath, contentType);
+            Log.Debug($"Sending: {fileName} as {contentType}");
+            return Results.File(cachePathService.CachePath(imageCacheModifiedElement), contentType);
         });
 
-        app.MapGet("/v1/static/{*staticPath}", async (
+        app.MapGet("/v1/static/{*staticUrlPath}", async (
             [FromServices]ICacheElementService cacheElementService,
             [FromServices]ICachePathService cachePathService,
             [FromServices]IDownloadService download,
@@ -220,15 +213,15 @@ partial class WebApp
             [FromServices]IQueryStringService queryStringService,
             [FromServices]WebEdgeDbContext webEdgeDb,
             HttpRequest httpRequest,
-            string staticPath) => 
+            string staticUrlPath) => 
         {
             using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", "Edge::v1/static");
 
-            if (hmacService.IsValid($"static/{staticPath}", httpRequest.QueryString) is false) {
+            if (hmacService.IsValid($"static/{staticUrlPath}", httpRequest.QueryString) is false) {
                 return Results.StatusCode(404);
             }
 
-            string fileName = Path.GetFileName(staticPath);
+            string fileName = Path.GetFileName(staticUrlPath);
             string contentType = "application/octect-stream";
 
             FileExtensionContentTypeProvider provider = new();
@@ -238,12 +231,10 @@ partial class WebApp
                 Log.Warning($"No content type found for {fileName}");
             }
 
-            string cacheStaticPathJson = JsonSerializer.Serialize(new[] { staticPath });
-            string cacheStaticPath = cachePathService.RelativeWithBucket(cacheStaticPathJson);
-            StaticCacheElementEntity staticCacheElement = await download.GetStaticAsync(staticPath, cacheStaticPath);
+            StaticCacheElementEntity cacheElement = await download.GetOriginStaticAsync(staticUrlPath);
 
-            Log.Debug($"Sending: {staticCacheElement.StaticCacheElementId} as {contentType}");
-            return Results.File(staticCacheElement.CachePath, contentType);
+            Log.Debug($"Sending: {cacheElement.StaticCacheElementId} as {contentType}");
+            return Results.File(cachePathService.CachePath(cacheElement), contentType);
         });
 
         app.MapGet("/v1/barcode", async (
@@ -263,14 +254,11 @@ partial class WebApp
                 return Results.StatusCode(404);
             }
 
-            string cacheBarcodeQueryStringJson = JsonSerializer.Serialize(new[] { queryString.ToString() });
-            string cacheBarcodeQueryString = cachePathService.RelativeWithBucket(cacheBarcodeQueryStringJson);
-
             BarcodeCacheElementEntity barcodeCacheElement =
-                await barcodeService.GenerateFromQueryString(cacheBarcodeQueryString, queryString);
+                await barcodeService.GenerateFromQueryString(queryString);
 
             Log.Debug($"Sending: {barcodeCacheElement.BarcodeCacheElementId} as image/png");
-            return Results.File(barcodeCacheElement.CachePath, "image/png");
+            return Results.File(cachePathService.CachePath(barcodeCacheElement), "image/png");
         });
 
         app.MapGet("/v1/display/{*display}", async (
