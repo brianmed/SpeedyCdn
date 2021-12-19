@@ -30,6 +30,8 @@ public class CacheElementService : ICacheElementService
             LastAccessedUtc = lastAccessedutc
         };
 
+        using var transaction = WebEdgeDb.Database.BeginTransaction();
+        
         WebEdgeDb.Add(barcodeCacheElement);
         await WebEdgeDb.SaveChangesAsync();
 
@@ -39,6 +41,8 @@ public class CacheElementService : ICacheElementService
         Log.Debug($"Moving: {cachePath} -> {cachePath}.{barcodeCacheElement.BarcodeCacheElementId}");
         File.Move(cachePath, $"{cachePath}.{barcodeCacheElement.BarcodeCacheElementId}");
 
+        transaction.Commit();
+
         return barcodeCacheElement;
     }
 
@@ -46,12 +50,14 @@ public class CacheElementService : ICacheElementService
     {
         long lastAccessedutc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         long expireUtc = DateTimeOffset.UtcNow.AddDays(7).ToUnixTimeSeconds();
-
+        
         ImageCacheElementEntity imageCacheElement = new ImageCacheElementEntity
         {
             FileSizeBytes = new FileInfo(imageCachePath).Length,
             LastAccessedUtc = lastAccessedutc
         };
+
+        using var transaction = WebEdgeDb.Database.BeginTransaction();
 
         WebEdgeDb.Add(imageCacheElement);
         await WebEdgeDb.SaveChangesAsync();
@@ -61,6 +67,8 @@ public class CacheElementService : ICacheElementService
 
         Log.Debug($"Moving: {imageCachePath} -> {imageCachePath}.{imageCacheElement.ImageCacheElementId}");
         File.Move(imageCachePath, $"{imageCachePath}.{imageCacheElement.ImageCacheElementId}");
+
+        transaction.Commit();
 
         return imageCacheElement;
     }
@@ -76,6 +84,8 @@ public class CacheElementService : ICacheElementService
             LastAccessedUtc = lastAccessedutc
         };
 
+        using var transaction = WebEdgeDb.Database.BeginTransaction();
+
         WebEdgeDb.Add(s3ImageCacheElement);
         await WebEdgeDb.SaveChangesAsync();
 
@@ -84,6 +94,8 @@ public class CacheElementService : ICacheElementService
 
         Log.Debug($"Moving: {s3ImageCachePath} -> {s3ImageCachePath}.{s3ImageCacheElement.S3ImageCacheElementId}");
         File.Move(s3ImageCachePath, $"{s3ImageCachePath}.{s3ImageCacheElement.S3ImageCacheElementId}");
+
+        transaction.Commit();
 
         return s3ImageCacheElement;
     }
@@ -99,6 +111,8 @@ public class CacheElementService : ICacheElementService
             LastAccessedUtc = lastAccessedutc
         };
 
+        using var transaction = WebEdgeDb.Database.BeginTransaction();
+
         WebEdgeDb.Add(staticCacheElement);
         await WebEdgeDb.SaveChangesAsync();
 
@@ -107,6 +121,8 @@ public class CacheElementService : ICacheElementService
 
         Log.Debug($"Moving: {staticCachePath} -> {staticCachePath}.{staticCacheElement.StaticCacheElementId}");
         File.Move(staticCachePath, $"{staticCachePath}.{staticCacheElement.StaticCacheElementId}");
+
+        transaction.Commit();
 
         return staticCacheElement;
     }

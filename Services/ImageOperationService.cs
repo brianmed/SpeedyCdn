@@ -70,7 +70,7 @@ public class ImageOperationService : IImageOperationService
 
             if (imageOpWithId is not null && File.Exists(imageOpWithId)) {
                 if (new FileInfo(imageOpWithId).Length > 0) {
-                    Log.Debug($"Image Operation Cache Hit: {imagePath}{queryString}");
+                    Log.Debug($"Image Operation Cache Hit: {imagePath}{queryString} - {imageOpWithId}");
                     
                     long imageCacheElementId = long.Parse(Path.GetExtension(Path.GetFileName(imageOpWithId)).Replace(".", String.Empty));
 
