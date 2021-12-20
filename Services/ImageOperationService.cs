@@ -23,7 +23,11 @@ public interface IImageOperationService
 
 public class ImageOperationService : IImageOperationService
 {
-    static ConcurrentDictionary<string, bool> InFlightImageOperations = new();
+    static ConcurrentDictionary<string, bool> MutexUrlPathAndQueryString = new();
+
+    static SemaphoreSlim ConcurrentImageOperations = new SemaphoreSlim(
+        ConfigCtx.Options.EdgeNumberOfImageOps,
+        ConfigCtx.Options.EdgeNumberOfImageOps);
 
     WebEdgeDbContext WebEdgeDb { get; init; }
 
@@ -54,16 +58,19 @@ public class ImageOperationService : IImageOperationService
 
         ImageCacheElementEntity cacheElement = null;
 
-        string mutexKey = originaImage.UrlPath;
-
-        string cacheImageOpPathAbs = CachePathService.CachePath(
-                ConfigCtx.Options.EdgeCacheImagesDirectory, new[] { originaImage.UrlPath, queryString.ToString() });
+        string mutexKey = $"{originaImage.UrlPath}{queryString}";
 
         try
         {
+            await ConcurrentImageOperations.WaitAsync();
+
+            string cacheImageOpPathAbs = CachePathService.CachePath(
+                ConfigCtx.Options.EdgeCacheImagesDirectory,
+                new[] { originaImage.UrlPath, queryString.ToString() });
+
             SpinWait sw = new SpinWait();
 
-            while (InFlightImageOperations.TryAdd(mutexKey, true) is false)
+            while (MutexUrlPathAndQueryString.TryAdd(mutexKey, true) is false)
             {
                 sw.SpinOnce();
             }
@@ -100,9 +107,11 @@ public class ImageOperationService : IImageOperationService
         }
         finally
         {
-            if (InFlightImageOperations.TryRemove(mutexKey, out bool whence) is false) {
+            if (MutexUrlPathAndQueryString.TryRemove(mutexKey, out bool whence) is false) {
                 Log.Error($"Issue Removing {mutexKey}");
             }
+
+            ConcurrentImageOperations.Release();
         }
 
         return cacheElement;
@@ -116,15 +125,17 @@ public class ImageOperationService : IImageOperationService
 
         string mutexKey = $"{originalS3Image.UrlPath}{queryString}";
 
-        string cacheS3ImageOpAbsolute = CachePathService.CachePath(
-            ConfigCtx.Options.EdgeCacheS3ImagesDirectory, 
-            new[] { originalS3Image.UrlPath, queryString.ToString() });
-
         try
         {
+            await ConcurrentImageOperations.WaitAsync();
+
+            string cacheS3ImageOpAbsolute = CachePathService.CachePath(
+                ConfigCtx.Options.EdgeCacheS3ImagesDirectory, 
+                new[] { originalS3Image.UrlPath, queryString.ToString() });
+
             SpinWait sw = new SpinWait();
 
-            while (InFlightImageOperations.TryAdd(mutexKey, true) is false)
+            while (MutexUrlPathAndQueryString.TryAdd(mutexKey, true) is false)
             {
                 sw.SpinOnce();
             }
@@ -161,9 +172,11 @@ public class ImageOperationService : IImageOperationService
         }
         finally
         {
-            if (InFlightImageOperations.TryRemove(mutexKey, out bool whence) is false) {
+            if (MutexUrlPathAndQueryString.TryRemove(mutexKey, out bool whence) is false) {
                 Log.Error($"Issue Removing {mutexKey}");
             }
+
+            ConcurrentImageOperations.Release();
         }
 
         return cacheElement;

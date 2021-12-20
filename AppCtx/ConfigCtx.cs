@@ -74,9 +74,6 @@ public class Options
         }
     }
 
-    [Option("originNumImageOps", Required = false, HelpText = "Number of Image Operation Queues")]
-    public int OriginNumImageOps { get; private set; }
-
     [Option("originEnableSensitiveLogging", Required = false, HelpText = "Origin Log Sensitive Information to Sql Log")]
     public bool OriginEnableSensitiveLogging { get; internal set; }
 
@@ -210,6 +207,9 @@ public class Options
     [Option("edgeOriginSignatureKey", Required = false, HelpText = "Origin Signature Key Utilized by the Edge")]
     public string EdgeOriginSignatureKey { get; internal set; }
 
+    [Option("edgeNumberOfImageOps", Required = false, HelpText = "Number of Concurrent Image Operations")]
+    public int EdgeNumberOfImageOps { get; private set; }
+
     // 
 
     [Option("version", Required = false, HelpText = "Version Information")]
@@ -289,7 +289,7 @@ public class Options
 
     public Options()
     {
-        OriginNumImageOps = Environment.ProcessorCount;
+        EdgeNumberOfImageOps = Environment.ProcessorCount;
 
         EdgeCacheInBytes = 1_073_741_824L * 5L;
 
