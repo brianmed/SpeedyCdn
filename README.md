@@ -2,33 +2,31 @@
 
 On Premise CDN
 
-Suppports static files and images with a few image operations.
+Suppports images, s3 images, static files, and qr codes.
+
+Seek the wiki for more.
 
 Currently in BETA.
 
 # Usage
 
-## Provision directories and obtain api key
+The below commands are for the initial provisioning.
 
 ```bash
-$ dotnet run -- --originShowApiKey
+# Provision directories and create api keys
+$ ./SpeedyCdn --originShowApiKey
 ...
 [07:07:38 INF] SpeedyCdn Origin ApiKey: ORIGIN_API_KEY
+^C  (stop the server)
+
+# Add some files so they will be served via http by the Edge server
+$ cp /abs/path/*.png ~/.config/SpeedyCdn/OriginSource/Images
+
+# Run again with the given api key
+$ ./SpeedyCdn --edgeOriginApiKey 'ORIGIN_API_KEY'
 ```
 
-## Copy some files into the source directory (below is on macOS)
-
-```bash
-$ cp *.png ~/.config/SpeedyCdn/OriginSource/Images
-```
-
-## Run Origin and Edge on same server with the needed ApiKey
-
-```bash
-$ dotnet run -- --edgeOriginApiKey 'ORIGIN_API_KEY'
-```
-
-# Requirements
+# Build Requirements
 
 Need the MyGet NuGet source defined: &lt;add key="SixLabors" value="https://www.myget.org/F/sixlabors/api/v3/index.json" /&gt;
 
