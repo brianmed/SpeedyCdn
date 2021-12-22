@@ -1,4 +1,4 @@
-# SpeedyCdn
+# Summary
 
 SpeedyCdn is an on-premise CDN that supports Origin and Edge servers. The Origin servers store files used by the Edge servers. Both Origin and Edge can be ran on the same server or different servers. In theory, multiple Edge servers can run and contact the same Origin server (making them act as CDN POPs).
 
