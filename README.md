@@ -26,6 +26,12 @@ $ cp /abs/path/*.png ~/.config/SpeedyCdn/OriginSource/Images
 $ ./SpeedyCdn --edgeOriginApiKey 'ORIGIN_API_KEY'
 ```
 
+After the above, all images copied into OriginSource/Images will be available via the Edge, like so.
+
+```bash
+$ curl http://IP:8080/v1/images/file.png
+```
+
 # Build Requirements
 
 Need the MyGet NuGet source defined: &lt;add key="SixLabors" value="https://www.myget.org/F/sixlabors/api/v3/index.json" /&gt;
