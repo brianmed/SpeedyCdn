@@ -24,15 +24,28 @@ public class CacheElementService : ICacheElementService
         long lastAccessedutc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         long expireUtc = DateTimeOffset.UtcNow.AddDays(7).ToUnixTimeSeconds();
 
-        BarcodeCacheElementEntity barcodeCacheElement = new BarcodeCacheElementEntity
-        {
-            UrlPath = String.Empty,
-            QueryString = queryString,
-            FileSizeBytes = new FileInfo(barcodeCachePath).Length,
-            LastAccessedUtc = lastAccessedutc
-        };
+        BarcodeCacheElementEntity barcodeCacheElement = null;
 
-        WebEdgeDb.Add(barcodeCacheElement);
+        if (await WebEdgeDb.BarcodeCacheElements
+            .Where(v => v.UrlPath == String.Empty)
+            .Where(v => v.QueryString == queryString)
+            .SingleOrDefaultAsync() is BarcodeCacheElementEntity cacheElement && cacheElement is not null)
+        {
+            cacheElement.LastAccessedUtc = lastAccessedutc;
+
+            barcodeCacheElement = cacheElement;
+        } else {
+            barcodeCacheElement = new BarcodeCacheElementEntity
+            {
+                UrlPath = String.Empty,
+                QueryString = queryString,
+                FileSizeBytes = new FileInfo(barcodeCachePath).Length,
+                LastAccessedUtc = lastAccessedutc
+            };
+
+            WebEdgeDb.Add(barcodeCacheElement);
+        }
+
         await WebEdgeDb.SaveChangesAsync();
 
         return barcodeCacheElement;
@@ -42,16 +55,29 @@ public class CacheElementService : ICacheElementService
     {
         long lastAccessedutc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         long expireUtc = DateTimeOffset.UtcNow.AddDays(7).ToUnixTimeSeconds();
-        
-        ImageCacheElementEntity imageCacheElement = new ImageCacheElementEntity
-        {
-            UrlPath = imageUrlPath,
-            QueryString = queryString,
-            FileSizeBytes = new FileInfo(imageCachePath).Length,
-            LastAccessedUtc = lastAccessedutc
-        };
 
-        WebEdgeDb.Add(imageCacheElement);
+        ImageCacheElementEntity imageCacheElement = null;
+
+        if (await WebEdgeDb.ImageCacheElements
+            .Where(v => v.UrlPath == imageUrlPath)
+            .Where(v => v.QueryString == queryString)
+            .SingleOrDefaultAsync() is ImageCacheElementEntity cacheElement && cacheElement is not null)
+        {
+            cacheElement.LastAccessedUtc = lastAccessedutc;
+
+            imageCacheElement = cacheElement;
+        } else {
+            imageCacheElement = new ImageCacheElementEntity
+            {
+                UrlPath = imageUrlPath,
+                QueryString = queryString,
+                FileSizeBytes = new FileInfo(imageCachePath).Length,
+                LastAccessedUtc = lastAccessedutc
+            };
+
+            WebEdgeDb.Add(imageCacheElement);
+        }
+        
         await WebEdgeDb.SaveChangesAsync();
 
         return imageCacheElement;
@@ -62,15 +88,28 @@ public class CacheElementService : ICacheElementService
         long lastAccessedutc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         long expireUtc = DateTimeOffset.UtcNow.AddDays(7).ToUnixTimeSeconds();
 
-        S3ImageCacheElementEntity s3ImageCacheElement = new S3ImageCacheElementEntity
-        {
-            UrlPath = s3ImageUrlPath,
-            QueryString = queryString,
-            FileSizeBytes = new FileInfo(s3ImageCachePath).Length,
-            LastAccessedUtc = lastAccessedutc
-        };
+        S3ImageCacheElementEntity s3ImageCacheElement = null;
 
-        WebEdgeDb.Add(s3ImageCacheElement);
+        if (await WebEdgeDb.S3ImageCacheElements
+            .Where(v => v.UrlPath == s3ImageUrlPath)
+            .Where(v => v.QueryString == queryString)
+            .SingleOrDefaultAsync() is S3ImageCacheElementEntity cacheElement && cacheElement is not null)
+        {
+            cacheElement.LastAccessedUtc = lastAccessedutc;
+
+            s3ImageCacheElement = cacheElement;
+        } else {
+            s3ImageCacheElement = new S3ImageCacheElementEntity
+            {
+                UrlPath = s3ImageUrlPath,
+                QueryString = queryString,
+                FileSizeBytes = new FileInfo(s3ImageCachePath).Length,
+                LastAccessedUtc = lastAccessedutc
+            };
+
+            WebEdgeDb.Add(s3ImageCacheElement);
+        }
+
         await WebEdgeDb.SaveChangesAsync();
 
         return s3ImageCacheElement;

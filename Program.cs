@@ -1,3 +1,6 @@
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
+
 using Serilog.Context;
 using Serilog.Events;
 using Serilog.Extensions.Hosting;
@@ -56,6 +59,11 @@ if (ConfigCtx.HasEdgeServer is false && ConfigCtx.HasOriginServer is false) {
     Log.Fatal("Neither Edge or Origin Server Urls Given");
 
     Environment.Exit(1);
+}
+
+foreach (string ip in GetAllLocalIPv4(NetworkInterfaceType.Ethernet).Union(GetAllLocalIPv4(NetworkInterfaceType.Wireless80211)))
+{
+    Log.Information($"Local Ethernet or Wireless Ip4v Address: {ip}");
 }
 
 List<Task> webApps = new();
@@ -151,6 +159,25 @@ void CurrentDomainOnUnhandledException(UnhandledExceptionEventArgs args)
     string message = string.Concat(exceptionMessage, terminatingMessage);
 
     Log.Error(exception, message);
+}
+
+List<string> GetAllLocalIPv4(NetworkInterfaceType _type)
+{
+    List<string> ipAddrList = new List<string>();
+
+    foreach (NetworkInterface item in NetworkInterface.GetAllNetworkInterfaces())
+    {
+        if (item.NetworkInterfaceType == _type && item.OperationalStatus == OperationalStatus.Up) {
+            foreach (UnicastIPAddressInformation ip in item.GetIPProperties().UnicastAddresses)
+            {
+                if (ip.Address.AddressFamily == AddressFamily.InterNetwork) {
+                    ipAddrList.Add(ip.Address.ToString());
+                }
+            }
+        }
+    }
+
+    return ipAddrList;
 }
 
 namespace SpeedyCdn.Server

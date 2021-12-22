@@ -369,11 +369,21 @@ partial class WebApp
                     .Add("signature", redirectSignature)
                     .ToString();
             } else {
-                redirectQueryString = httpRequest.QueryString
+                redirectQueryString = queryStringService
+                    .CreateExcept(httpRequest.QueryString, "display")
                     .ToString();
             }
             try
             {
+                using var transaction = webOriginDb.Database.BeginTransaction();
+
+                if (await webOriginDb.DisplayUrl
+                    .Where(v => v.Display == display)
+                    .SingleOrDefaultAsync() is DisplayUrlEntity currentUrl && currentUrl is not null)
+                {
+                    webOriginDb.Remove(currentUrl);
+                }
+                
                 DisplayUrlEntity displayUrlEntity = new()
                 {
                     Display = display,
@@ -384,6 +394,8 @@ partial class WebApp
                 webOriginDb.Add(displayUrlEntity);
 
                 await webOriginDb.SaveChangesAsync();
+
+                transaction.Commit();
             }
             catch
             {
@@ -499,6 +511,15 @@ partial class WebApp
                     .ToString();
             }
 
+            using var transaction = webOriginDb.Database.BeginTransaction();
+
+            if (await webOriginDb.UuidUrl
+                .Where(v => v.Uuid == uuid)
+                .SingleOrDefaultAsync() is UuidUrlEntity currentUuid && currentUuid is not null)
+            {
+                webOriginDb.Remove(currentUuid);
+            }
+                
             UuidUrlEntity uuidUrlEntity = new()
             {
                 Uuid = uuid,

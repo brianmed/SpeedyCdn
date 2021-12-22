@@ -244,7 +244,9 @@ public class DownloadService : IDownloadService
 
                 await streamToReadFrom.CopyToAsync(fs);
             } else {
-                Log.Error($"Issue: {await response.Content.ReadAsStreamAsync()}");
+                string issue = await response.Content.ReadAsStringAsync();
+
+                throw new Exception(issue);
             }
         }
     }

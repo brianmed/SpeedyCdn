@@ -1,3 +1,6 @@
+using SixLabors.ImageSharp.Drawing.Processing;
+using SixLabors.ImageSharp.Drawing.Processing.Processors.Text;
+
 public class LabelImageArgs
 {
     public string Text { get; init; }

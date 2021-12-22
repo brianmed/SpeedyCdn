@@ -45,19 +45,22 @@ public class ReplaceColorImageOperation : ImageOperation
                     ctx.BackgroundColor(args.NewColor);
                 });
             } else {
-                foreach (int idx in Enumerable.Range(0, image.Height))
+                image.ProcessPixelRows(pixelAccessor =>
                 {
-                    Span<Rgba32> row = image.GetPixelRowSpan(idx);
-
-                    for (int rdx = 0; rdx < image.Width; ++rdx)
+                    for (int y = 0; y < pixelAccessor.Height; y++)
                     {
-                        Color color = new(row[rdx]);
+                        Span<Rgba32> row = pixelAccessor.GetRowSpan(y);
 
-                        if (color == args.OldColor || (args.Difference > 0 && ColorDifference(row[rdx], args.OldColor) <= args.Difference)) {
-                            row[rdx] = args.NewColor;
+                        for (int x = 0; x < row.Length; x++)
+                        {
+                            Color color = new(row[x]);
+
+                            if (color == args.OldColor || (args.Difference > 0 && ColorDifference(row[x], args.OldColor) <= args.Difference)) {
+                                row[x] = args.NewColor;
+                            }
                         }
                     }
-                }
+                });
             }
 
             Log.Debug($"Saving: {fs.Name}");
