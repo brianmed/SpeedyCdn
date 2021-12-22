@@ -395,7 +395,7 @@ partial class WebApp
 
                 await webOriginDb.SaveChangesAsync();
 
-                transaction.Commit();
+                await transaction.CommitAsync();
             }
             catch
             {
@@ -530,6 +530,8 @@ partial class WebApp
             webOriginDb.Add(uuidUrlEntity);
 
             await webOriginDb.SaveChangesAsync();
+
+            await transaction.CommitAsync();
 
             return new
             {
