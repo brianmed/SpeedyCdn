@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.Configuration;
 
 using SpeedyCdn.Server.AppCtx;
+using SpeedyCdn.Server.Entities;
 using SpeedyCdn.Server.Entities.Edge;
 
 namespace SpeedyCdn.Server.DbContexts;
@@ -17,6 +18,8 @@ public class WebEdgeDbContext : DbContext
     public DbSet<S3ImageCacheElementEntity> S3ImageCacheElements { get; set; }
 
     public DbSet<StaticCacheElementEntity> StaticCacheElements { get; set; }
+
+    public DbSet<TableSequenceEntity> TableSequences { get; set; }
 
     // 
 

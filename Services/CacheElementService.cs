@@ -22,7 +22,6 @@ public class CacheElementService : ICacheElementService
     public async Task<BarcodeCacheElementEntity> InsertBarcodeAsync(string barcodeCachePath, string queryString)
     {
         long lastAccessedutc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        long expireUtc = DateTimeOffset.UtcNow.AddDays(7).ToUnixTimeSeconds();
 
         BarcodeCacheElementEntity barcodeCacheElement = null;
 
@@ -37,6 +36,8 @@ public class CacheElementService : ICacheElementService
         } else {
             barcodeCacheElement = new BarcodeCacheElementEntity
             {
+                BarcodeCacheElementId = Int32.Parse(Path.GetFileName(barcodeCachePath)),
+                CachePath = barcodeCachePath,
                 UrlPath = String.Empty,
                 QueryString = queryString,
                 FileSizeBytes = new FileInfo(barcodeCachePath).Length,
@@ -54,7 +55,6 @@ public class CacheElementService : ICacheElementService
     public async Task<ImageCacheElementEntity> InsertImageAsync(string imageCachePath, string imageUrlPath, string queryString = "")
     {
         long lastAccessedutc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        long expireUtc = DateTimeOffset.UtcNow.AddDays(7).ToUnixTimeSeconds();
 
         ImageCacheElementEntity imageCacheElement = null;
 
@@ -69,6 +69,8 @@ public class CacheElementService : ICacheElementService
         } else {
             imageCacheElement = new ImageCacheElementEntity
             {
+                ImageCacheElementId = Int32.Parse(Path.GetFileName(imageCachePath)),
+                CachePath = imageCachePath,
                 UrlPath = imageUrlPath,
                 QueryString = queryString,
                 FileSizeBytes = new FileInfo(imageCachePath).Length,
@@ -86,7 +88,6 @@ public class CacheElementService : ICacheElementService
     public async Task<S3ImageCacheElementEntity> InsertS3ImageAsync(string s3ImageCachePath, string s3ImageUrlPath, string queryString = "")
     {
         long lastAccessedutc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        long expireUtc = DateTimeOffset.UtcNow.AddDays(7).ToUnixTimeSeconds();
 
         S3ImageCacheElementEntity s3ImageCacheElement = null;
 
@@ -101,6 +102,8 @@ public class CacheElementService : ICacheElementService
         } else {
             s3ImageCacheElement = new S3ImageCacheElementEntity
             {
+                S3ImageCacheElementId = Int32.Parse(Path.GetFileName(s3ImageCachePath)),
+                CachePath = s3ImageCachePath,
                 UrlPath = s3ImageUrlPath,
                 QueryString = queryString,
                 FileSizeBytes = new FileInfo(s3ImageCachePath).Length,
@@ -118,10 +121,11 @@ public class CacheElementService : ICacheElementService
     public async Task<StaticCacheElementEntity> InsertStaticAsync(string staticCachePath, string staticUrlPath, string queryString = "")
     {
         long lastAccessedutc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        long expireUtc = DateTimeOffset.UtcNow.AddDays(7).ToUnixTimeSeconds();
 
         StaticCacheElementEntity staticCacheElement = new StaticCacheElementEntity
         {
+            StaticCacheElementId = Int32.Parse(Path.GetFileName(staticCachePath)),
+            CachePath = staticCachePath,
             UrlPath = staticUrlPath,
             QueryString = queryString,
             FileSizeBytes = new FileInfo(staticCachePath).Length,

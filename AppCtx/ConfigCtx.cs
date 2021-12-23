@@ -190,8 +190,40 @@ public class Options
         }
     }
 
-    [Option("edgeCacheInBytes", Required = false, HelpText = "Allowed Size of Cache in Bytes")]
-    public long EdgeCacheInBytes
+    [Option("edgeCacheExpireSeconds", Required = false, HelpText = "Edge Cache Elements with Older LastAccessedUtc Times are Deleted")]
+    public long EdgeCacheExpireSeconds
+    {
+        get;
+
+        private set;
+    }
+
+    [Option("edgeBarcodeCacheInBytes", Required = false, HelpText = "Allowed Size of Barcode Cache in Bytes")]
+    public long EdgeBarcodeCacheInBytes
+    {
+        get;
+
+        private set;
+    }
+
+    [Option("edgeImageCacheInBytes", Required = false, HelpText = "Allowed Size of Image Cache in Bytes")]
+    public long EdgeImageCacheInBytes
+    {
+        get;
+
+        private set;
+    }
+
+    [Option("edgeS3ImageCacheInBytes", Required = false, HelpText = "Allowed Size of S3Image Cache in Bytes")]
+    public long EdgeS3ImageCacheInBytes
+    {
+        get;
+
+        private set;
+    }
+
+    [Option("edgeStaticCacheInBytes", Required = false, HelpText = "Allowed Size of Static Cache in Bytes")]
+    public long EdgeStaticCacheInBytes
     {
         get;
 
@@ -291,7 +323,12 @@ public class Options
     {
         EdgeNumberOfImageOps = Environment.ProcessorCount;
 
-        EdgeCacheInBytes = 1_073_741_824L * 5L;
+        EdgeCacheExpireSeconds = (long)TimeSpan.FromHours(3).TotalSeconds;
+
+        EdgeBarcodeCacheInBytes = 1_073_741_824L;
+        EdgeImageCacheInBytes = 1_073_741_824L;
+        EdgeS3ImageCacheInBytes = 1_073_741_824L;
+        EdgeStaticCacheInBytes = 1_073_741_824L;
 
         EdgeUrls = "http://*:8080";
         EdgeOriginUrl = "http://localhost:8000";

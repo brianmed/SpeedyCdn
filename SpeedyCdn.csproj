@@ -23,7 +23,6 @@
     <PackageReference Include="Mapster" Version="7.2.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="6.0.0" />
     <PackageReference Include="Microsoft.Extensions.PlatformAbstractions" Version="1.1.0" />
-    <PackageReference Include="NewId" Version="3.0.3" />
     <PackageReference Include="Serilog.AspNetCore" Version="4.1.0" />
     <PackageReference Include="Serilog.Extensions.Hosting" Version="4.2.0" />
     <PackageReference Include="SixLabors.Fonts" Version="1.0.0-beta15.24" />
@@ -38,11 +37,9 @@
     <EmbeddedResource Include="Sql/SpeedyCdnEdgeDb00002.Sql" />
     <EmbeddedResource Include="Sql/SpeedyCdnEdgeDb00003.Sql" />
     <EmbeddedResource Include="Sql/SpeedyCdnEdgeDb00004.Sql" />
-    <EmbeddedResource Include="Sql/SpeedyCdnEdgeDb00005.Sql" />
     <EmbeddedResource Include="Sql/SpeedyCdnOriginDb00000.Sql" />
     <EmbeddedResource Include="Sql/SpeedyCdnOriginDb00001.Sql" />
     <EmbeddedResource Include="Sql/SpeedyCdnOriginDb00002.Sql" />
-    <EmbeddedResource Include="Sql/SpeedyCdnOriginDb00003.Sql" />
   </ItemGroup>
 
   <ItemGroup>

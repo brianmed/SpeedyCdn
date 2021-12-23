@@ -29,7 +29,6 @@ using SpeedyCdn.Server.Entities.Origin;
 using Amazon.S3;
 using Amazon.S3.Model;
 using BrianMed.AspNetCore.SerilogW3cMiddleware;
-using MassTransit;
 using Serilog.Events;
 
 using SpeedyCdn.Dto;
@@ -210,7 +209,13 @@ partial class WebApp
                 Log.Warning($"No content type found for {fileName}");
             }
 
-            return Results.File(Path.Combine(ConfigCtx.Options.OriginSourceImagesDirectory) + Path.DirectorySeparatorChar + Path.Combine(imagePath.Split('/')), contentType);
+            string file = Path.Combine(ConfigCtx.Options.OriginSourceImagesDirectory) + Path.DirectorySeparatorChar + Path.Combine(imagePath.Split('/'));
+
+            if (File.Exists(file)) {
+                return Results.File(file, contentType);
+            } else {
+                return Results.StatusCode(404);
+            }
         });
 
         app.MapGet("/v1/s3/{fileType}/{bucketName}/{*imageKey}",
@@ -249,13 +254,13 @@ partial class WebApp
             return Results.File(response.ResponseStream, contentType);
         });
 
-        app.MapGet("/v1/static/{*filePath}",
+        app.MapGet("/v1/static/{*staticPath}",
             [Authorize(Policy = "ApiKey")]
-            async (string filePath) => 
+            async (string staticPath) => 
         {
             using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"Origin::v1/static");
 
-            string fileName = Path.GetFileName(filePath);
+            string fileName = Path.GetFileName(staticPath);
             string contentType = "application/octect-stream";
 
             FileExtensionContentTypeProvider provider = new();
@@ -265,7 +270,13 @@ partial class WebApp
                 Log.Warning($"No content type found for {fileName}");
             }
 
-            return Results.File(Path.Combine(ConfigCtx.Options.OriginSourceStaticDirectory) + Path.DirectorySeparatorChar + Path.Combine(filePath.Split('/')), contentType);
+            string file = Path.Combine(ConfigCtx.Options.OriginSourceStaticDirectory) + Path.DirectorySeparatorChar + Path.Combine(staticPath.Split('/'));
+
+            if (File.Exists(file)) {
+                return Results.File(file, contentType);
+            } else {
+                return Results.StatusCode(404);
+            }
         });
 
         app.MapGet("/v1/display",
@@ -409,137 +420,6 @@ partial class WebApp
             };
         });
 
-        app.MapGet("/v1/uuid",
-            [Authorize(Policy = "ApiKey")]
-            async (
-                [FromServices]WebOriginDbContext webOriginDb,
-                HttpRequest httpRequest) => 
-        {
-            using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"Origin::v1/uuid");
-
-            return (await webOriginDb.UuidUrl
-                .OrderBy(v => v.UuidUrlId)
-                .ToListAsync())
-                .Adapt<IEnumerable<UuidUrlDto>>();
-        });
-
-        app.MapDelete("/v1/uuid/{uuid}",
-            [Authorize(Policy = "ApiKey")]
-            async (
-                [FromServices]WebOriginDbContext webOriginDb,
-                string uuid) => 
-        {
-            using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"Origin::v1/uuid/uuid");
-
-            try
-            {
-                UuidUrlEntity uuidUrlEntity = await webOriginDb.UuidUrl
-                    .Where(v => v.Uuid == uuid)
-                    .SingleAsync();
-
-                webOriginDb.Remove(uuidUrlEntity);
-
-                await webOriginDb.SaveChangesAsync();
-            }
-            catch
-            {
-                return Results.StatusCode(404);
-            }
-
-            return Results.Ok();
-        });
-
-        app.MapGet("/v1/uuid/{*uuidUrl}",
-            [Authorize(Policy = "ApiKey")]
-            async (
-                [FromServices]WebOriginDbContext webOriginDb,
-                HttpRequest httpRequest,
-                string uuidUrl) => 
-        {
-            using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"Origin::v1/uuid/uuidUrl");
-
-            UuidUrlEntity uuidUrlEntity = null;
-
-            try
-            {
-                uuidUrlEntity = await webOriginDb.UuidUrl
-                    .Where(v => v.Uuid == uuidUrl)
-                    .SingleOrDefaultAsync();
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, $"Issue Retrieving UuidUrl {uuidUrl}");
-            }
-
-            return new UuidUrlDto()
-            {
-                Uuid = uuidUrl,
-                RedirectPath = uuidUrlEntity?.RedirectPath,
-                QueryString = uuidUrlEntity?.QueryString
-            };
-        });
-
-        app.MapPost("/v1/uuid/{*redirectPath}",
-            [Authorize(Policy = "ApiKey")]
-            async (
-                [FromServices]WebOriginDbContext webOriginDb,
-                HttpRequest httpRequest,
-                [FromServices]IHmacService hmacService,
-                [FromServices]IQueryStringService queryStringService,
-                string redirectPath, UrlGenerationDto urlGenerationDto) => 
-        {
-            using IDisposable logContext = LogContext.PushProperty("WebAppPrefix", $"Origin::v1/uuid/redirectPath");
-
-            Log.Debug($"uuid: {redirectPath}");
-
-            string uuid = NewId.Next().ToString();
-
-            string key = (await webOriginDb.App
-                .SingleAsync())
-                .SignatureKey;
-
-            string redirectQueryString;
-
-            if (urlGenerationDto.HasSignature) {
-                string redirectSignature = hmacService.Hash(key, $"{redirectPath}{httpRequest.QueryString}");
-
-                redirectQueryString = httpRequest.QueryString
-                    .Add("signature", redirectSignature)
-                    .ToString();
-            } else {
-                redirectQueryString = httpRequest.QueryString
-                    .ToString();
-            }
-
-            using var transaction = webOriginDb.Database.BeginTransaction();
-
-            if (await webOriginDb.UuidUrl
-                .Where(v => v.Uuid == uuid)
-                .SingleOrDefaultAsync() is UuidUrlEntity currentUuid && currentUuid is not null)
-            {
-                webOriginDb.Remove(currentUuid);
-            }
-                
-            UuidUrlEntity uuidUrlEntity = new()
-            {
-                Uuid = uuid,
-                RedirectPath = $"/v1/{redirectPath}",
-                QueryString = redirectQueryString
-            };
-
-            webOriginDb.Add(uuidUrlEntity);
-
-            await webOriginDb.SaveChangesAsync();
-
-            await transaction.CommitAsync();
-
-            return new
-            {
-                Uuid = uuid,
-                UuidSignature = hmacService.Hash(key, $"uuid/{uuid}")
-            };
-        });
-
         app.MapPost("/v1/signature/{signatureType}",
             [Authorize(Policy = "ApiKey")]
             async (
@@ -670,3 +550,5 @@ public class ApiKeyAuthorizationHandler : AuthorizationHandler<ApiKeyAuthorizati
         }
     }
 }
+
+

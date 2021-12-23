@@ -64,10 +64,6 @@ public class ImageOperationService : IImageOperationService
         {
             await ConcurrentImageOperations.WaitAsync();
 
-            string cacheImageOpPathAbs = CachePathService.CachePath(
-                ConfigCtx.Options.EdgeCacheImagesDirectory,
-                new[] { originaImage.UrlPath, queryString.ToString() });
-
             SpinWait sw = new SpinWait();
 
             while (MutexUrlPathAndQueryString.TryAdd(mutexKey, true) is false)
@@ -75,15 +71,13 @@ public class ImageOperationService : IImageOperationService
                 sw.SpinOnce();
             }
 
-            Directory.CreateDirectory(Path.GetDirectoryName(cacheImageOpPathAbs));
-
             cacheElement = await WebEdgeDb.ImageCacheElements
                 .Where(v => v.UrlPath == originaImage.UrlPath)
                 .Where(v => v.QueryString == queryString.ToString())
                 .SingleOrDefaultAsync();
 
-            if (cacheElement is not null && File.Exists(cacheImageOpPathAbs)) {
-                if (new FileInfo(cacheImageOpPathAbs).Length > 0) {
+            if (cacheElement is not null && File.Exists(CachePathService.CachePath(cacheElement))) {
+                if (new FileInfo(CachePathService.CachePath(cacheElement)).Length > 0) {
                     Log.Debug($"Cache Hit: {cacheElement.UrlPath}{cacheElement.QueryString} - {cacheElement.ImageCacheElementId}");
 
                     cacheElement.LastAccessedUtc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -96,6 +90,9 @@ public class ImageOperationService : IImageOperationService
             } else {
                 Log.Debug($"No Image Operation Cache File Found: {originaImage.UrlPath}{queryString}");
             }
+
+            string cacheImageOpPathAbs = await CachePathService
+                .GetCachePathAbsoluteAsync("ImageCacheElements", originaImage.UrlPath, queryString.ToString());
 
             await RunAllFromQueryAsync(originaImage, queryString, cacheImageOpPathAbs);
 
@@ -129,10 +126,6 @@ public class ImageOperationService : IImageOperationService
         {
             await ConcurrentImageOperations.WaitAsync();
 
-            string cacheS3ImageOpAbsolute = CachePathService.CachePath(
-                ConfigCtx.Options.EdgeCacheS3ImagesDirectory, 
-                new[] { originalS3Image.UrlPath, queryString.ToString() });
-
             SpinWait sw = new SpinWait();
 
             while (MutexUrlPathAndQueryString.TryAdd(mutexKey, true) is false)
@@ -140,15 +133,13 @@ public class ImageOperationService : IImageOperationService
                 sw.SpinOnce();
             }
 
-            Directory.CreateDirectory(Path.GetDirectoryName(cacheS3ImageOpAbsolute));
-
             cacheElement = await WebEdgeDb.S3ImageCacheElements
                 .Where(v => v.UrlPath == originalS3Image.UrlPath)
                 .Where(v => v.QueryString == queryString.ToString())
                 .SingleOrDefaultAsync();
 
-            if (cacheElement is not null && File.Exists(cacheS3ImageOpAbsolute)) {
-                if (new FileInfo(cacheS3ImageOpAbsolute).Length > 0) {
+            if (cacheElement is not null && File.Exists(CachePathService.CachePath(cacheElement))) {
+                if (new FileInfo(CachePathService.CachePath(cacheElement)).Length > 0) {
                     Log.Debug($"Cache Hit: {originalS3Image.UrlPath}{queryString}");
                     
                     cacheElement.LastAccessedUtc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -161,6 +152,9 @@ public class ImageOperationService : IImageOperationService
             } else {
                 Log.Debug($"No Cache File Found: {originalS3Image.UrlPath}{queryString}");
             }
+
+            string cacheS3ImageOpAbsolute = await CachePathService
+                .GetCachePathAbsoluteAsync("S3ImageCacheElements", originalS3Image.UrlPath, queryString.ToString());
 
             await RunAllFromQueryAsync(originalS3Image, queryString, cacheS3ImageOpAbsolute);
 

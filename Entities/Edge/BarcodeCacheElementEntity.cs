@@ -16,6 +16,9 @@ namespace SpeedyCdn.Server.Entities.Edge
         public long BarcodeCacheElementId { get; set; }
 
         [Required]
+        public string CachePath { get; set; }
+
+        [Required]
         public string UrlPath { get; set; }
 
         [Required]
@@ -32,4 +35,3 @@ namespace SpeedyCdn.Server.Entities.Edge
         public DateTime Inserted { get; set; } = DateTime.UtcNow;
     }
 }
-

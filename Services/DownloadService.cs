@@ -58,19 +58,13 @@ public class DownloadService : IDownloadService
                 sw.SpinOnce();
             }
 
-            string cachePathAbsolute = CachePathService.CachePath(
-                ConfigCtx.Options.EdgeCacheS3ImagesDirectory,
-                new[] { $"{s3Bucket}/{s3Key}", String.Empty });
-
-            Directory.CreateDirectory(Path.GetDirectoryName(cachePathAbsolute));
-
             cacheElement = await WebEdgeDb.S3ImageCacheElements
                 .Where(v => v.UrlPath == $"{s3Bucket}/{s3Key}")
                 .Where(v => v.QueryString == String.Empty)
                 .SingleOrDefaultAsync();
 
-            if (cacheElement is not null && File.Exists(cachePathAbsolute)) {
-                if (new FileInfo(cachePathAbsolute).Length > 0) {
+            if (cacheElement is not null && File.Exists(CachePathService.CachePath(cacheElement))) {
+                if (new FileInfo(CachePathService.CachePath(cacheElement)).Length > 0) {
                     Log.Debug($"Cache Hit: {s3Bucket}/{s3Key} - {cacheElement.S3ImageCacheElementId}");
 
                     cacheElement.LastAccessedUtc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -83,6 +77,8 @@ public class DownloadService : IDownloadService
             } else {
                 Log.Debug($"No Cache File Found: {s3Bucket}/{s3Key}");
             }
+
+            string cachePathAbsolute = await CachePathService.GetCachePathAbsoluteAsync("S3ImageCacheElements", $"{s3Bucket}/{s3Key}", String.Empty);
 
             await DownloadAsync(url, cachePathAbsolute);
 
@@ -119,19 +115,13 @@ public class DownloadService : IDownloadService
                 sw.SpinOnce();
             }
 
-            string cachePathAbsolute = CachePathService.CachePath(
-                ConfigCtx.Options.EdgeCacheImagesDirectory,
-                new[] { imageUrlPath, String.Empty });
-
-            Directory.CreateDirectory(Path.GetDirectoryName(cachePathAbsolute));
-
             cacheElement = await WebEdgeDb.ImageCacheElements
                 .Where(v => v.UrlPath == imageUrlPath)
                 .Where(v => v.QueryString == String.Empty)
                 .SingleOrDefaultAsync();
 
-            if (cacheElement is not null && File.Exists(cachePathAbsolute)) {
-                if (new FileInfo(cachePathAbsolute).Length > 0) {
+            if (cacheElement is not null && File.Exists(CachePathService.CachePath(cacheElement))) {
+                if (new FileInfo(CachePathService.CachePath(cacheElement)).Length > 0) {
                     Log.Debug($"Cache Hit: {imageUrlPath} - {cacheElement.ImageCacheElementId}");
 
                     cacheElement.LastAccessedUtc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -144,6 +134,9 @@ public class DownloadService : IDownloadService
             } else {
                 Log.Debug($"No Cache File Found: {imageUrlPath}");
             }
+
+            string cachePathAbsolute = await CachePathService
+                .GetCachePathAbsoluteAsync("ImageCacheElements", imageUrlPath, String.Empty);
 
             await DownloadAsync(url, cachePathAbsolute);
 
@@ -180,19 +173,13 @@ public class DownloadService : IDownloadService
                 sw.SpinOnce();
             }
 
-            string cachePathAbsolute = CachePathService.CachePath(
-                ConfigCtx.Options.EdgeCacheImagesDirectory,
-                new[] { staticUrlPath, String.Empty });
-
-            Directory.CreateDirectory(Path.GetDirectoryName(cachePathAbsolute));
-
             cacheElement = await WebEdgeDb.StaticCacheElements
                 .Where(v => v.UrlPath == staticUrlPath)
                 .Where(v => v.QueryString == String.Empty)
                 .SingleOrDefaultAsync();
 
-            if (cacheElement is not null && File.Exists(cachePathAbsolute)) {
-                if (new FileInfo(cachePathAbsolute).Length > 0) {
+            if (cacheElement is not null && File.Exists(CachePathService.CachePath(cacheElement))) {
+                if (new FileInfo(CachePathService.CachePath(cacheElement)).Length > 0) {
                     Log.Debug($"Cache Hit: {staticUrlPath}");
 
                     cacheElement.LastAccessedUtc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -205,6 +192,8 @@ public class DownloadService : IDownloadService
             } else {
                 Log.Debug($"No Cache File Found: {staticUrlPath}");
             }
+
+            string cachePathAbsolute = await CachePathService.GetCachePathAbsoluteAsync("StaticCacheElements", staticUrlPath, String.Empty);
 
             await DownloadAsync(url, cachePathAbsolute);
 

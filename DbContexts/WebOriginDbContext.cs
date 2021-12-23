@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.Configuration;
 
 using SpeedyCdn.Server.AppCtx;
+using SpeedyCdn.Server.Entities;
 using SpeedyCdn.Server.Entities.Origin;
 
 namespace SpeedyCdn.Server.DbContexts;
@@ -16,8 +17,6 @@ public class WebOriginDbContext : DbContext /**/
     public DbSet<AppEntity> App { get; set; }
 
     public DbSet<DisplayUrlEntity> DisplayUrl { get; set; }
-
-    public DbSet<UuidUrlEntity> UuidUrl { get; set; }
 
     // 
 

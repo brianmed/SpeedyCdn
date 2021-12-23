@@ -16,6 +16,9 @@ namespace SpeedyCdn.Server.Entities.Edge
         public long S3ImageCacheElementId { get; set; }
 
         [Required]
+        public string CachePath { get; set; }
+
+        [Required]
         public string UrlPath { get; set; }
 
         [Required]

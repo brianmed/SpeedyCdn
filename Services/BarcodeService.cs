@@ -42,10 +42,6 @@ public class BarcodeService : IBarcodeService
 
         BarcodeCacheElementEntity cacheElement = null;
 
-        string cachePathAbsolute = CachePathService.CachePath(
-            ConfigCtx.Options.EdgeCacheBarcodesDirectory,
-            new[] { String.Empty, queryString.ToString() });
-
         try
         {
             SpinWait sw = new SpinWait();
@@ -55,15 +51,13 @@ public class BarcodeService : IBarcodeService
                 sw.SpinOnce();
             }
 
-            Directory.CreateDirectory(Path.GetDirectoryName(cachePathAbsolute));
-
             cacheElement = await WebEdgeDb.BarcodeCacheElements
                 .Where(v => v.UrlPath == String.Empty)
                 .Where(v => v.QueryString == queryString.ToString())
                 .SingleOrDefaultAsync();
 
-            if (cacheElement is not null && File.Exists(cachePathAbsolute)) {
-                if (new FileInfo(cachePathAbsolute).Length > 0) {
+            if (cacheElement is not null && File.Exists(CachePathService.CachePath(cacheElement))) {
+                if (new FileInfo(CachePathService.CachePath(cacheElement)).Length > 0) {
                     Log.Debug($"Cache Hit: {queryString}");
 
                     cacheElement.LastAccessedUtc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -86,6 +80,9 @@ public class BarcodeService : IBarcodeService
             List<(string Name, List<string> Args)> args = QueryStringService.Args(queryString, barcodeRequiredParameters);
 
             BarcodeFormat barcodeFormat = BarcodeFormatFactory(args.First().Name);
+
+            string cachePathAbsolute = await CachePathService
+                .GetCachePathAbsoluteAsync("BarcodeCacheElements", String.Empty, queryString.ToString());
 
             using (FileStream barcodeStream = new FileStream(cachePathAbsolute, FileMode.OpenOrCreate))
             {
