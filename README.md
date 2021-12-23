@@ -10,7 +10,7 @@ Currently in BETA.
 
 # Usage
 
-The below commands are for the initial provisioning.
+The below commands are for provisioning.
 
 ```bash
 # Provision directories and create api keys
