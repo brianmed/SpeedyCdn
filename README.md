@@ -13,11 +13,11 @@ Currently in BETA.
 SpeedyCdn below is an executable downloaded from the Releases page.  The example commands are on Linux.
 
 ```bash
-# Provision directories and create api keys
-$ ./SpeedyCdn --originShowApiKey
+# Provision directories, create keys, and display the keys
+$ ./SpeedyCdn --originShowKeys
 ...
-[07:07:38 INF] SpeedyCdn Origin ApiKey: ORIGIN_API_KEY
-^C  (stop the server)
+Origin ApiKey: ORIGIN_API_KEY
+Origin SignatureKey: ORIGIN_SIGNATURE_KEY
 
 # Add some files so they will be served via http by the Edge server
 $ cp /abs/path/*.png ~/.config/SpeedyCdn/OriginSource/Images
