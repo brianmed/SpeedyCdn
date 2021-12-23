@@ -32,10 +32,6 @@ After the above, all images copied into OriginSource/Images will be available vi
 $ curl http://IP:8080/v1/images/file.png
 ```
 
-# Build Requirements
-
-Need the MyGet NuGet source defined: &lt;add key="SixLabors" value="https://www.myget.org/F/sixlabors/api/v3/index.json" /&gt;
-
 ## Example Image
 
 Using http://127.0.0.1/v1/images/tux.png?replaceColor.OldColor=Transparent&replaceColor.NewColor=White&label.Text=Tux&label.FontName=Arial&label.FontSize=64&label.OutlineColor=Purple&label.TextColor=Yellow
@@ -48,5 +44,10 @@ Two directory trees are created by default:
 
   - $HOME/.net
   - $HOME/.config/SpeedyCdn
+
+
+# Build Requirements
+
+Need the MyGet NuGet source defined: &lt;add key="SixLabors" value="https://www.myget.org/F/sixlabors/api/v3/index.json" /&gt;
 
 Also, a commercial version will be available at some point.
