@@ -8,9 +8,9 @@ Seek the wiki for more.
 
 Currently in BETA.
 
-# Usage
+# Provisioning
 
-The below commands are for provisioning.
+SpeedyCdn below is an executable downloaded from the Releases page.  The example commands are on Linux.
 
 ```bash
 # Provision directories and create api keys
