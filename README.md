@@ -4,7 +4,7 @@ SpeedyCdn is an on-premise CDN that supports Origin and Edge servers. The Origin
 
 Suppports images, s3 images, static files, and qr codes.
 
-Seek the wiki for more.
+See the wiki for more.
 
 Currently in BETA.
 
